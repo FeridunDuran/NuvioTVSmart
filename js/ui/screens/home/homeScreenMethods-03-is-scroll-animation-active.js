@@ -71,6 +71,12 @@ export function createHomeScreenMethods03() {
       return this.isScrollAnimationActive(this.modernCameraFollowLastHorizontalContainer, "x");
     },
     isSidebarFocusActive() {
+      // Personal build: this runs on every image-hydration pass; answer from the focused
+      // element instead of a selector query over the whole home DOM.
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains("focused") && this.container?.contains(active)) {
+        return Boolean(active.closest(".home-sidebar, .modern-sidebar-panel"));
+      }
       return Boolean(this.container?.querySelector(".home-sidebar .focusable.focused, .modern-sidebar-panel .focusable.focused"));
     },
     getRowFocusInset() {

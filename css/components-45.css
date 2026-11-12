@@ -496,3 +496,13 @@
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* Personal build: the constrained-device rule above gives every element a 140 ms transition
+   duration, and the default transition-property is "all", so each focus move animated layout
+   and paint properties on hundreds of nodes. Animate only compositor-friendly properties. */
+.performance-constrained * {
+  transition-property:
+    opacity,
+    transform,
+    -webkit-transform !important;
+}

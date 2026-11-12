@@ -70,6 +70,10 @@ export function createHomeScreenMethods30() {
         cancelAnimationFrame(this.homeViewportScrollFrame);
         this.homeViewportScrollFrame = 0;
       }
+      if (this.homeViewportFocusCheckTimer) {
+        clearTimeout(this.homeViewportFocusCheckTimer);
+        this.homeViewportFocusCheckTimer = null;
+      }
       if (this.boundHomeViewport && this.boundHomeViewportScrollHandler) {
         this.boundHomeViewport.removeEventListener("scroll", this.boundHomeViewportScrollHandler, true);
       }

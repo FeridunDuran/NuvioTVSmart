@@ -294,15 +294,27 @@ export function createHomeScreenMethods19() {
             this.scheduleHomeLazyImageHydration(null, {
               deferUntilVerticalSettle: this.shouldUseImmediateFocusScroll()
             });
-            // Keep the sidebar sticky across rerenders and layout-driven scroll events.
-            if (this.isSidebarFocusActive()) {
-              return;
+            // Personal build: the focus-in-viewport check forces a layout (two
+            // getBoundingClientRect calls on a ~3000 node DOM). Run it once the scroll
+            // has been quiet for 120 ms instead of on every scrolled frame.
+            if (this.homeViewportFocusCheckTimer) {
+              clearTimeout(this.homeViewportFocusCheckTimer);
             }
-            const current = this.container?.querySelector(".home-main .focusable.focused") || null;
-            if (current && this.isMainNode(current) && this.isNodeWithinMainViewport(current)) {
-              return;
-            }
-            this.scheduleHomeViewportFocusSync();
+            this.homeViewportFocusCheckTimer = setTimeout(() => {
+              this.homeViewportFocusCheckTimer = null;
+              if (!this.container || Router.getCurrent() !== "home") {
+                return;
+              }
+              // Keep the sidebar sticky across rerenders and layout-driven scroll events.
+              if (this.isSidebarFocusActive()) {
+                return;
+              }
+              const current = this.container.querySelector(".home-main .focusable.focused") || null;
+              if (current && this.isMainNode(current) && this.isNodeWithinMainViewport(current)) {
+                return;
+              }
+              this.scheduleHomeViewportFocusSync();
+            }, 120);
           });
         };
       }

@@ -297,9 +297,20 @@ export function formatEpisodeCardDate(value = "") {
   if (Number.isNaN(parsed.getTime())) {
     return "";
   }
-  return parsed.toLocaleDateString(I18n.getLocale(), {
-    month: "long",
-    day: "numeric",
-    year: "numeric"
-  });
+  return longDateFormatter(I18n.getLocale()).format(parsed);
+}
+
+// Personal build: toLocaleDateString builds a new Intl.DateTimeFormat on every call, which is
+// slow on Tizen 5.5 and runs once per episode card. One formatter per locale is reused.
+const longDateFormatters = {};
+function longDateFormatter(locale) {
+  const key = String(locale || "");
+  if (!longDateFormatters[key]) {
+    longDateFormatters[key] = new Intl.DateTimeFormat(locale || undefined, {
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    });
+  }
+  return longDateFormatters[key];
 }

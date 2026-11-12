@@ -357,21 +357,11 @@ class AddonRepository {
   readProfileScopedValue(key, normalizeValue, defaultValue, profileId = null) {
     // Personal build: memoized on the raw stored text. Each read used to parse, normalize,
     // re-serialize and compare the whole add-on envelope; the detail screen does many reads.
+    // Keyed on the LocalStore revision, which every LocalStore write/remove/clear bumps.
     const storageProfileId = this.getActiveStorageProfileId(profileId);
-    let rawText;
-    try {
-      rawText = localStorage.getItem(key);
-    } catch (_error) {
-      rawText = undefined;
-    }
     const memoKey = `${key}|${storageProfileId}`;
     const memo = profileScopedValueCache.get(memoKey);
-    if (
-      memo &&
-      rawText !== undefined &&
-      memo.rawText === rawText &&
-      memo.normalizeValue === normalizeValue
-    ) {
+    if (memo && memo.revision === LocalStore.revision(key)) {
       return this.cloneValue(memo.value);
     }
     const envelope = this.readProfileScopedEnvelope(key, normalizeValue);
@@ -382,19 +372,11 @@ class AddonRepository {
       defaultValue,
       profileId
     );
-    let afterText;
-    try {
-      afterText = localStorage.getItem(key);
-    } catch (_error) {
-      afterText = undefined;
-    }
-    if (afterText !== undefined) {
-      profileScopedValueCache.set(memoKey, {
-        rawText: afterText,
-        normalizeValue,
-        value: this.cloneValue(value)
-      });
-    }
+    // Read the revision after the calls above: they may write a normalized envelope back.
+    profileScopedValueCache.set(memoKey, {
+      revision: LocalStore.revision(key),
+      value: this.cloneValue(value)
+    });
     return this.cloneValue(value);
   }
 
