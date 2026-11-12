@@ -27,6 +27,11 @@ function readBooleanFlag(value) {
   return false;
 }
 
+// Personal build: memo caches (see canonicalizeUrl, normalizeUrl, readProfileScopedValue).
+const canonicalUrlCache = new Map();
+const normalizedUrlCache = new Map();
+const profileScopedValueCache = new Map();
+
 class AddonRepository {
   constructor() {
     this.manifestCache = new Map();
@@ -151,6 +156,22 @@ class AddonRepository {
   }
 
   canonicalizeUrl(url) {
+    // Personal build: memoized; the detail screen canonicalized the same add-on URLs
+    // thousands of times per open (about 1.5 s on a Tizen 5.5 TV).
+    const input = String(url || "");
+    const cached = canonicalUrlCache.get(input);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = this.canonicalizeUrlUncached(input);
+    if (canonicalUrlCache.size > 2000) {
+      canonicalUrlCache.clear();
+    }
+    canonicalUrlCache.set(input, result);
+    return result;
+  }
+
+  canonicalizeUrlUncached(url) {
     const trimmed = String(url || "")
       .trim()
       .replace(/\/+$/, "");
@@ -164,7 +185,17 @@ class AddonRepository {
   }
 
   normalizeUrl(url) {
-    return this.normalizeCinemetaUrl(this.canonicalizeUrl(url)).toLowerCase();
+    const input = String(url || "");
+    const cached = normalizedUrlCache.get(input);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = this.normalizeCinemetaUrl(this.canonicalizeUrl(input)).toLowerCase();
+    if (normalizedUrlCache.size > 2000) {
+      normalizedUrlCache.clear();
+    }
+    normalizedUrlCache.set(input, result);
+    return result;
   }
 
   buildManifestUrl(baseUrl) {
@@ -324,10 +355,47 @@ class AddonRepository {
   }
 
   readProfileScopedValue(key, normalizeValue, defaultValue, profileId = null) {
+    // Personal build: memoized on the raw stored text. Each read used to parse, normalize,
+    // re-serialize and compare the whole add-on envelope; the detail screen does many reads.
+    const storageProfileId = this.getActiveStorageProfileId(profileId);
+    let rawText;
+    try {
+      rawText = localStorage.getItem(key);
+    } catch (_error) {
+      rawText = undefined;
+    }
+    const memoKey = `${key}|${storageProfileId}`;
+    const memo = profileScopedValueCache.get(memoKey);
+    if (
+      memo &&
+      rawText !== undefined &&
+      memo.rawText === rawText &&
+      memo.normalizeValue === normalizeValue
+    ) {
+      return this.cloneValue(memo.value);
+    }
     const envelope = this.readProfileScopedEnvelope(key, normalizeValue);
-    return this.cloneValue(
-      this.ensureProfileScopedValue(key, envelope, normalizeValue, defaultValue, profileId)
+    const value = this.ensureProfileScopedValue(
+      key,
+      envelope,
+      normalizeValue,
+      defaultValue,
+      profileId
     );
+    let afterText;
+    try {
+      afterText = localStorage.getItem(key);
+    } catch (_error) {
+      afterText = undefined;
+    }
+    if (afterText !== undefined) {
+      profileScopedValueCache.set(memoKey, {
+        rawText: afterText,
+        normalizeValue,
+        value: this.cloneValue(value)
+      });
+    }
+    return this.cloneValue(value);
   }
 
   writeProfileScopedValue(key, normalizeValue, value, profileId = null) {

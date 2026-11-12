@@ -111,6 +111,8 @@ function getFirstAvailableProfileIndex(profiles = []) {
   return null;
 }
 
+let activeProfileIdCache = null;
+
 export const ProfileManager = {
   MAX_PROFILES,
 
@@ -284,6 +286,17 @@ export const ProfileManager = {
   },
 
   getActiveProfileId() {
+    // Personal build: cached on the LocalStore revision; this is called on hot paths and
+    // used to parse localStorage every time.
+    const revision = LocalStore.revision(ACTIVE_PROFILE_ID_KEY);
+    if (activeProfileIdCache && activeProfileIdCache.revision === revision) {
+      return activeProfileIdCache.value;
+    }
+    const value = this.readActiveProfileIdUncached();
+    activeProfileIdCache = { revision, value };
+    return value;
+  },
+  readActiveProfileIdUncached() {
     const raw = LocalStore.get(ACTIVE_PROFILE_ID_KEY, null);
     if (raw == null) {
       return "1";

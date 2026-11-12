@@ -189,7 +189,8 @@ export function createStreamScreenMethods09() {
         this.applyAddonFilterDomState(filtered, allStreams);
       }
 
-      this.restoreScrollPosition();
+      // Personal build: the scroll position is restored once, after focusables are indexed
+      // below; restoring it here as well forced an extra full layout of the rebuilt list.
       this.hydrateVisibleStreamBadges();
       this.bindAddonLogoFallbacks();
       const headerLogo = this.container.querySelector(".stream-route-logo");

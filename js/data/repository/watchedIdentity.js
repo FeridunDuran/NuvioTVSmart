@@ -26,8 +26,13 @@ function addPrefixedIdentityValue(set, prefix, value) {
  * Returns every stable catalog identity carried by a watched item or a catalog item.
  * The tracker payload and the catalog are allowed to choose different primary IDs;
  * callers must therefore compare this set instead of comparing only contentId.
+ * Personal build: the returned Set is cached per object and shared; callers must not mutate it.
  */
 export function watchedItemIdentityValues(item = {}) {
+  return cachedIdentityValues(item);
+}
+
+function computeIdentityValues(item = {}) {
   const values = new Set();
   const ids = item.ids || item.externalIds || item.external_ids || {};
   addIdentityValue(values, item.contentId);
@@ -52,11 +57,11 @@ const identityCache = typeof WeakMap === "function" ? new WeakMap() : null;
 
 function cachedIdentityValues(item) {
   if (!identityCache || !item || typeof item !== "object") {
-    return watchedItemIdentityValues(item || {});
+    return computeIdentityValues(item || {});
   }
   let values = identityCache.get(item);
   if (!values) {
-    values = watchedItemIdentityValues(item);
+    values = computeIdentityValues(item);
     identityCache.set(item, values);
   }
   return values;
