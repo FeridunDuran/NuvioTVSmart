@@ -40,21 +40,26 @@ export function createMetaDetailsScreenMethods13() {
         holdTriggered: false
       };
       this.pendingHeroHoldTimer = setTimeout(() => {
-        this.pendingHeroHoldTimer = null;
-        const pending = this.pendingHeroHoldTarget;
-        if (!pending || Router.getCurrent() !== "detail") {
-          return;
-        }
-        const current = this.container?.querySelector(".series-detail-actions .focusable.focused") || null;
-        if (!this.hasPendingHeroHold(current)) {
-          return;
-        }
-        pending.holdTriggered = true;
-        if (pending.action === "playDefault") {
-          this.openHeroPlayMenu();
-        } else {
-          void this.openLibraryListMenu();
-        }
+        // Personal build: a short grace period before opening the options menu. When the
+        // TV stalls during a normal click, this timer and the key release are both queued;
+        // without the grace the timer ran first and a click opened "title options".
+        this.pendingHeroHoldTimer = setTimeout(() => {
+          this.pendingHeroHoldTimer = null;
+          const pending = this.pendingHeroHoldTarget;
+          if (!pending || Router.getCurrent() !== "detail") {
+            return;
+          }
+          const current = this.container?.querySelector(".series-detail-actions .focusable.focused") || null;
+          if (!this.hasPendingHeroHold(current)) {
+            return;
+          }
+          pending.holdTriggered = true;
+          if (pending.action === "playDefault") {
+            this.openHeroPlayMenu();
+          } else {
+            void this.openLibraryListMenu();
+          }
+        }, 80);
       }, HERO_HOLD_DELAY_MS);
       return true;
     },
@@ -222,12 +227,17 @@ export function createMetaDetailsScreenMethods13() {
       }
       this.pendingPosterHoldTarget = node;
       this.pendingPosterHoldTimer = setTimeout(() => {
-        this.pendingPosterHoldTimer = null;
-        const target = this.pendingPosterHoldTarget;
-        this.pendingPosterHoldTarget = null;
-        if (target?.isConnected && target.classList.contains("focused")) {
-          void this.openPosterOptionsMenu(target);
-        }
+        // Personal build: a short grace period before opening the options menu. When the
+        // TV stalls during a normal click, this timer and the key release are both queued;
+        // without the grace the timer ran first and a click opened "title options".
+        this.pendingPosterHoldTimer = setTimeout(() => {
+          this.pendingPosterHoldTimer = null;
+          const target = this.pendingPosterHoldTarget;
+          this.pendingPosterHoldTarget = null;
+          if (target?.isConnected && target.classList.contains("focused")) {
+            void this.openPosterOptionsMenu(target);
+          }
+        }, 80);
       }, POSTER_HOLD_DELAY_MS);
     },
     completePendingPosterHold(node, event = null) {

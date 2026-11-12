@@ -163,12 +163,17 @@ export function createSearchScreenMethods03() {
       }
       this.pendingPosterHoldTarget = node;
       this.pendingPosterHoldTimer = setTimeout(() => {
-        this.pendingPosterHoldTimer = null;
-        const target = this.pendingPosterHoldTarget;
-        this.pendingPosterHoldTarget = null;
-        if (target?.isConnected && target.classList.contains("focused")) {
-          void this.openPosterOptionsMenu(target);
-        }
+        // Personal build: a short grace period before opening the options menu. When the
+        // TV stalls during a normal click, this timer and the key release are both queued;
+        // without the grace the timer ran first and a click opened "title options".
+        this.pendingPosterHoldTimer = setTimeout(() => {
+          this.pendingPosterHoldTimer = null;
+          const target = this.pendingPosterHoldTarget;
+          this.pendingPosterHoldTarget = null;
+          if (target?.isConnected && target.classList.contains("focused")) {
+            void this.openPosterOptionsMenu(target);
+          }
+        }, 80);
       }, POSTER_HOLD_DELAY_MS);
     },
     completePendingPosterHold(node, event = null) {
