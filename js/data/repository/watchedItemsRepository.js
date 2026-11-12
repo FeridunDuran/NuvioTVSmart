@@ -632,8 +632,10 @@ class WatchedItemsRepository {
         ? Infinity
         : 2000
     );
+    // Personal build: build the target reference once, not once per watched record.
+    const reference = { ...options, contentId };
     return all.some((item) => {
-      if (!watchedItemsShareIdentity(item, { ...options, contentId })) {
+      if (!watchedItemsShareIdentity(item, reference)) {
         return false;
       }
       if (options.season != null && options.episode != null)

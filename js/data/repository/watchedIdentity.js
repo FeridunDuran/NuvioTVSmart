@@ -7,10 +7,15 @@ function addIdentityValue(set, value) {
   set.add(normalized.toLowerCase());
 }
 
+// Personal build: the prefix regexes are compiled once instead of on every call.
+const PREFIX_PATTERNS = {};
+
 function addPrefixedIdentityValue(set, prefix, value) {
+  const pattern =
+    PREFIX_PATTERNS[prefix] || (PREFIX_PATTERNS[prefix] = new RegExp(`^${prefix}:`, "i"));
   const normalized = String(value ?? "")
     .trim()
-    .replace(new RegExp(`^${prefix}:`, "i"), "");
+    .replace(pattern, "");
   if (!normalized) {
     return;
   }
@@ -40,7 +45,29 @@ export function watchedItemIdentityValues(item = {}) {
   return values;
 }
 
+// Personal build: identity sets are cached per object. Watched/progress records are compared
+// against every card on each focus move; rebuilding both sets per comparison froze navigation
+// for up to 1.3 s on a Tizen 5.5 TV. Records are replaced, not mutated, when they change.
+const identityCache = typeof WeakMap === "function" ? new WeakMap() : null;
+
+function cachedIdentityValues(item) {
+  if (!identityCache || !item || typeof item !== "object") {
+    return watchedItemIdentityValues(item || {});
+  }
+  let values = identityCache.get(item);
+  if (!values) {
+    values = watchedItemIdentityValues(item);
+    identityCache.set(item, values);
+  }
+  return values;
+}
+
 export function watchedItemsShareIdentity(left = {}, right = {}) {
-  const rightIds = watchedItemIdentityValues(right);
-  return Array.from(watchedItemIdentityValues(left)).some((id) => rightIds.has(id));
+  const rightIds = cachedIdentityValues(right);
+  for (const id of cachedIdentityValues(left)) {
+    if (rightIds.has(id)) {
+      return true;
+    }
+  }
+  return false;
 }
