@@ -210,13 +210,24 @@ export function createSearchScreenMethods02() {
           })
           .filter((row) => row.items.length);
 
+      // Personal build: publish progressively. Upstream showed the first catalog that
+      // answered and then nothing until every catalog had finished or timed out, so most
+      // results arrived in one late batch. Later rows are published at most every 700 ms.
+      let lastPublishedRowCount = 0;
+      let lastPublishAt = 0;
       const publishFirstResults = () => {
-        if (publishedFirstResults || token !== this.loadToken || typeof onFirstResults !== "function") {
+        if (token !== this.loadToken || typeof onFirstResults !== "function") {
+          return;
+        }
+        const now = Date.now();
+        if (publishedFirstResults && now - lastPublishAt < 700) {
           return;
         }
         const rows = buildRows();
-        if (!rows.length) return;
+        if (!rows.length || rows.length === lastPublishedRowCount) return;
         publishedFirstResults = true;
+        lastPublishedRowCount = rows.length;
+        lastPublishAt = now;
         onFirstResults(rows);
       };
 

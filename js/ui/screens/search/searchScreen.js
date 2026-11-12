@@ -129,7 +129,9 @@ const SEARCH_RESULTS_PER_ROW_DEFAULT = 18;
 const SEARCH_RESULTS_PER_ROW_CONSTRAINED = 12;
 const SEARCH_DISCOVER_RESULTS_PER_ROW_DEFAULT = 14;
 const SEARCH_DISCOVER_RESULTS_PER_ROW_CONSTRAINED = 10;
-const SEARCH_CATALOG_BATCH_SIZE_CONSTRAINED = 3;
+// Personal build: 6 instead of 3. Catalog requests are network waits, not CPU; three at a
+// time made slow add-ons hold back every catalog queued behind them.
+const SEARCH_CATALOG_BATCH_SIZE_CONSTRAINED = 6;
 const SEARCH_CATALOG_TIMEOUT_MS_DEFAULT = 3500;
 const SEARCH_CATALOG_TIMEOUT_MS_CONSTRAINED = 6500;
 
