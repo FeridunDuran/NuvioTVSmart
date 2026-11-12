@@ -59,7 +59,7 @@ import { StartupSyncService } from "../../../core/profile/startupSyncService.js"
 
 import { Platform } from "../../../platform/index.js";
 
-import { WatchProgressSource } from "../../../data/local/traktSettingsStore.js";
+import { WatchProgressSource, TraktSettingsStore, normalizeTraktContinueWatchingDaysCap } from "../../../data/local/traktSettingsStore.js";
 
 import { watchProgressCompletedThreshold } from "../../../domain/model/watchProgress.js";
 
@@ -346,8 +346,13 @@ export function buildNextUpSeedFromWatchedItem(item = {}) {
 export function getContinueWatchingNextUpSeedOptions() {
   const source = watchProgressRepository.getContinueWatchingSource?.() || WatchProgressSource.NUVIO_SYNC;
   const useLocalWatchedItemSeeds = source === WatchProgressSource.NUVIO_SYNC;
+  // Personal build: honour the user's Trakt "Continue Watching window" (0 = all history).
+  // The next-up selection used a fixed 60-day cap, so with "All" selected only shows
+  // watched in the last two months could appear.
+  const userDaysCap = normalizeTraktContinueWatchingDaysCap(TraktSettingsStore.get().continueWatchingDaysCap);
   return {
-    applyDaysCap: source === WatchProgressSource.TRAKT,
+    applyDaysCap: source === WatchProgressSource.TRAKT && userDaysCap !== 0,
+    daysCap: userDaysCap,
     includeProgressSeeds: !useLocalWatchedItemSeeds,
     includeWatchedItemSeeds: useLocalWatchedItemSeeds
   };

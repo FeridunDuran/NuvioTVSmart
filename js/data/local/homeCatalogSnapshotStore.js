@@ -10,7 +10,9 @@ const STORE_NAME = "snapshots";
 // Bump this whenever the compact row shape changes; old records are ignored
 // and deleted on read instead of being interpreted as the new shape.
 const SNAPSHOT_VERSION = 1;
-const SNAPSHOT_TTL_MS = 12 * 60 * 60 * 1000;
+// Personal build: 7 days instead of 12 hours. Cached rows are only shown until the live
+// catalogs answer, so an older snapshot still beats an empty Home (slow add-on catalogs).
+const SNAPSHOT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ROWS = 40;
 const MAX_ITEMS_PER_ROW = 60;
 const MAX_RECORDS = 8;

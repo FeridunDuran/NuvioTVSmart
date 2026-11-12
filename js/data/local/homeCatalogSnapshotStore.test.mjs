@@ -145,7 +145,7 @@ test("snapshot freshness rejects another version, missing rows and expired recor
   assert.equal(isHomeCatalogSnapshotFresh({ ...fresh, version: 2 }, now), false);
   assert.equal(isHomeCatalogSnapshotFresh({ ...fresh, rows: null }, now), false);
   assert.equal(
-    isHomeCatalogSnapshotFresh({ ...fresh, savedAt: now - 13 * 60 * 60 * 1000 }, now),
+    isHomeCatalogSnapshotFresh({ ...fresh, savedAt: now - 8 * 24 * 60 * 60 * 1000 }, now),
     false
   );
 });
@@ -217,7 +217,7 @@ test("snapshot store round-trips, expires and clears by profile", async () => {
     assert.equal(stored[0].result.data.items.length, 2);
 
     const record = records.get(key);
-    record.savedAt = Date.now() - 13 * 60 * 60 * 1000;
+    record.savedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
     records.set(key, record);
     assert.equal(await HomeCatalogSnapshotStore.read({ key }), null);
 

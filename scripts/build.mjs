@@ -523,9 +523,20 @@ async function buildCoreJsBundle() {
   if (requiredModules.length === 0) {
     throw new Error("Core-js compatibility query returned no required modules.");
   }
+  // Personal build: these replace the native JSON.parse/JSON.stringify with JavaScript
+  // implementations (JSON.rawJSON / parse source-text access, which the app does not use).
+  // On a Tizen 5.5 TV they cost seconds: every localStorage read, clone and API response
+  // went through them. The engine's own JSON is kept instead.
+  const skippedCoreJsModules = new Set([
+    "es.json.parse",
+    "es.json.stringify",
+    "es.json.is-raw-json",
+    "es.json.raw-json"
+  ]);
   await build({
     stdin: {
       contents: requiredModules
+        .filter((moduleName) => !skippedCoreJsModules.has(moduleName))
         .map((moduleName) => `import "core-js/modules/${moduleName}.js";`)
         .join("\n"),
       resolveDir: rootDir,

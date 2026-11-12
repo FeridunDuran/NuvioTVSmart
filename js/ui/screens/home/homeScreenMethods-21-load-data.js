@@ -2,7 +2,9 @@ import * as internals from "./homeScreenContext.js";
 import { startHomeContinueWatchingLoad } from "./homeContinueWatchingLoad.js";
 import { HomeCatalogSnapshotStore, buildHomeCatalogSnapshotKey } from "../../../data/local/homeCatalogSnapshotStore.js";
 
-const SNAPSHOT_READ_TIMEOUT_MS = 500;
+// Personal build: IndexedDB opens slowly on a cold Tizen 5.5 start; 500 ms often lost the race
+// and Home started with no cached rows.
+const SNAPSHOT_READ_TIMEOUT_MS = 2500;
 const SNAPSHOT_WRITE_INTERVAL_MS = 60 * 1000;
 
 function readSnapshotWithTimeout(options) {

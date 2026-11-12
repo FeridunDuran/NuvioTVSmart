@@ -54,9 +54,18 @@ function writeEnvelope(envelope) {
   LocalStore.set(STORE_KEY, envelope);
 }
 
+// Personal build: memoized on the LocalStore revision; this is read on hot paths
+// (isAuthenticated, account keys) and used to parse and normalize the envelope every time.
+let profileStateMemo = null;
+
 function readProfileState(profileId = activeProfileId()) {
-  const envelope = readEnvelope();
-  return clone(normalizeState(envelope.profiles[String(profileId)] || {}));
+  const revision = LocalStore.revision(STORE_KEY);
+  const id = String(profileId);
+  if (!profileStateMemo || profileStateMemo.revision !== revision || profileStateMemo.id !== id) {
+    const envelope = readEnvelope();
+    profileStateMemo = { revision, id, state: normalizeState(envelope.profiles[id] || {}) };
+  }
+  return clone(profileStateMemo.state);
 }
 
 function writeProfileState(profileId, nextState) {

@@ -1,4 +1,5 @@
 import { TraktAuthStore } from "../local/traktAuthStore.js";
+import { LocalStore } from "../../core/storage/localStore.js";
 import { requestTraktRefreshAfterWatchAction } from "./traktActivityRefreshState.js";
 import {
   beginManualWatched,
@@ -191,6 +192,8 @@ let traktWatchedMoviesCache = null;
 let traktWatchedMoviesInFlight = null;
 let traktWatchedShowsCache = null;
 let traktWatchedShowsGeneration = 0;
+let traktMergedWatchedMemo = null;
+const WATCHED_ITEMS_STORE_KEY = "watchedItems";
 let traktWatchedShowsInFlight = null;
 
 export function invalidateTraktWatchedMoviesCache() {
@@ -272,7 +275,7 @@ async function getTraktWatchedMovies() {
   return promise;
 }
 
-async function getTraktWatchedShows({ strict = false } = {}) {
+async function getTraktWatchedShows({ strict = false, retried = false } = {}) {
   if (!shouldUseTrakt()) {
     return [];
   }
@@ -315,13 +318,22 @@ async function getTraktWatchedShows({ strict = false } = {}) {
         currentAuth.userSlug || currentAuth.username || "",
         currentAuth.userSlug || currentAuth.username ? "" : currentAuth.refreshToken
       ]);
-      if (
-        generation !== traktWatchedShowsGeneration ||
-        profileId !== activeProfileId() ||
-        currentAccountKey !== accountKey ||
-        !shouldUseTrakt()
-      ) {
+      const sameSession =
+        profileId === activeProfileId() && currentAccountKey === accountKey && shouldUseTrakt();
+      if (!sameSession) {
         throw new Error("Obsolete Trakt watched shows request");
+      }
+      if (generation !== traktWatchedShowsGeneration) {
+        // Personal build: a cache invalidation while the request was in flight (startup sync
+        // marks items watched) used to discard the response and hand callers an empty list,
+        // so Continue Watching lost every "next up" show. Fetch once more instead.
+        if (retried) {
+          throw new Error("Obsolete Trakt watched shows request");
+        }
+        if (traktWatchedShowsInFlight?.promise === promise) {
+          traktWatchedShowsInFlight = null;
+        }
+        return getTraktWatchedShows({ strict: true, retried: true });
       }
       if (!Array.isArray(items)) throw new Error("Invalid Trakt watched shows response");
       const normalizedItems = items;
@@ -599,18 +611,43 @@ class WatchedItemsRepository {
         getTraktWatchedMovies(),
         getTraktWatchedShows()
       ]);
+      // Personal build: with a full Trakt history this merge builds thousands of episode
+      // records and identity keys. It ran on every call (several per screen open, ~1.5 s on
+      // a Tizen 5.5 TV). The result is reused while the Trakt caches and the local store
+      // are unchanged; callers get a fresh array holding the same record objects.
+      const localRevision = LocalStore.revision(WATCHED_ITEMS_STORE_KEY);
+      const memo = traktMergedWatchedMemo;
+      if (
+        memo &&
+        memo.remoteMovies === remoteMovies &&
+        memo.remoteShows === remoteShows &&
+        memo.localRevision === localRevision &&
+        memo.limit === limit &&
+        memo.profileId === String(profileId)
+      ) {
+        return memo.items.slice();
+      }
       const remote = [
         ...remoteMovies,
         ...remoteShows.flatMap((show) => toTraktWatchedShowEpisodeItems(show))
       ];
       const remoteKeys = new Set(remote.flatMap(watchedIdentityKeys));
-      return limitWatchedItems(
+      const merged = limitWatchedItems(
         [
           ...remote,
           ...local.filter((item) => !watchedIdentityKeys(item).some((key) => remoteKeys.has(key)))
         ],
         limit
       );
+      traktMergedWatchedMemo = {
+        remoteMovies,
+        remoteShows,
+        localRevision,
+        limit,
+        profileId: String(profileId),
+        items: merged
+      };
+      return merged.slice();
     }
     if (!shouldUseSimkl()) return local.slice(0, limit);
     const remote = await SimklSyncService.getWatchedItems().catch(() => []);

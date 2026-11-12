@@ -1,3 +1,4 @@
+import { LocalStore } from "../storage/localStore.js";
 const PROFILE_SCOPED_VERSION = 1;
 
 const ACCOUNT_LOCAL_STORAGE_KEYS = new Set([
@@ -90,6 +91,7 @@ function shouldRemoveLocalStorageKey(key, rawValue) {
 function removeStorageKey(storage, key) {
   try {
     storage.removeItem(key);
+    LocalStore.invalidate(key);
   } catch (error) {
     // A TV may temporarily expose a read-only or quota-limited storage area.
     // Keep clearing the remaining account keys and avoid logging their values.

@@ -24,6 +24,12 @@ export const LocalStore = {
     }
   },
 
+  // Personal build: for code that writes localStorage directly; keeps revision-keyed
+  // memo caches (profile id, add-on settings, Trakt auth) from serving stale values.
+  invalidate(key) {
+    revisions.set(key, ++storageRevision);
+  },
+
   remove(key) {
     localStorage.removeItem(key);
     revisions.set(key, ++storageRevision);

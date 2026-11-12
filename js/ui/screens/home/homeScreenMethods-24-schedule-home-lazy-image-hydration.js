@@ -568,7 +568,8 @@ export function createHomeScreenMethods24() {
       const includeWatchedItemSeeds = options?.includeWatchedItemSeeds !== false;
       const includeProgressSeeds = options?.includeProgressSeeds !== false;
       const applyDaysCap = options?.applyDaysCap !== false;
-      const cutoffMs = applyDaysCap ? Date.now() - CW_DAYS_CAP * 24 * 60 * 60 * 1000 : 0;
+      const daysCap = Number(options?.daysCap) > 0 ? Number(options.daysCap) : CW_DAYS_CAP;
+      const cutoffMs = applyDaysCap ? Date.now() - daysCap * 24 * 60 * 60 * 1000 : 0;
       const nextUpFromFurthestEpisode = options?.nextUpFromFurthestEpisode !== false;
       const inProgressSeriesIds = new Set(
         (Array.isArray(inProgressItems) ? inProgressItems : [])
