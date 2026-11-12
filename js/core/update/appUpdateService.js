@@ -75,6 +75,10 @@ export async function getLatestAppUpdate({
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
+  // Personal build: no in-app update checks (the fork is installed by hand).
+  if (PERSONAL_BUILD_UPDATES_DISABLED) {
+    return null;
+  }
   if (typeof fetchImpl !== "function") {
     throw new Error("Fetch is unavailable");
   }
@@ -151,4 +155,10 @@ export async function getLatestAppUpdateWithRetry({
   }
 
   throw lastError || new Error("App update check failed");
+}
+
+// Personal build switch; tests may flip it through setUpdateChecksDisabledForTests.
+let PERSONAL_BUILD_UPDATES_DISABLED = true;
+export function setUpdateChecksDisabledForTests(value) {
+  PERSONAL_BUILD_UPDATES_DISABLED = Boolean(value);
 }

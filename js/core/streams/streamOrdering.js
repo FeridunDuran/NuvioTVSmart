@@ -152,19 +152,22 @@ export function orderStreamsByAddonOrder(
  */
 export function groupStreamsByProvider(streams = []) {
   const addonGroups = new Map();
-  (Array.isArray(streams) ? streams : []).filter(Boolean).forEach((stream) => {
-    const addonName = normalizedName(stream?.addonName);
-    const providerName = normalizedName(stream?.pluginSourceName) || addonName;
-    let providers = addonGroups.get(addonName);
-    if (!providers) {
-      providers = new Map();
-      addonGroups.set(addonName, providers);
-    }
-    if (!providers.has(providerName)) {
-      providers.set(providerName, []);
-    }
-    providers.get(providerName).push(stream);
-  });
+  (Array.isArray(streams) ? streams : [])
+    .filter(Boolean)
+    .filter((stream) => !isPromoEntry(stream))
+    .forEach((stream) => {
+      const addonName = normalizedName(stream?.addonName);
+      const providerName = normalizedName(stream?.pluginSourceName) || addonName;
+      let providers = addonGroups.get(addonName);
+      if (!providers) {
+        providers = new Map();
+        addonGroups.set(addonName, providers);
+      }
+      if (!providers.has(providerName)) {
+        providers.set(providerName, []);
+      }
+      providers.get(providerName).push(stream);
+    });
   const compareProviderNames = (left, right) => {
     const a = String(left).toLowerCase();
     const b = String(right).toLowerCase();
@@ -173,8 +176,68 @@ export function groupStreamsByProvider(streams = []) {
   return [...addonGroups.values()].flatMap((providers) =>
     [...providers.entries()]
       .sort(([left], [right]) => compareProviderNames(left, right))
-      .flatMap(([, items]) => items)
+      .flatMap(([, items]) => orderForTv(items))
   );
+}
+
+// Personal build (same rules as the Android fork): inside each provider list 1080p first, then
+// 720p, then 4K, then the rest; inside a tier the most seeded torrent first. The sort is stable,
+// so streams without a seed count keep the add-on's own order. Keys are cached per stream object
+// because this runs again every time an add-on delivers results.
+const SEED_PATTERNS = [
+  /\uD83D\uDC64\s*([0-9][0-9.,]*)/,
+  /seed(?:er)?s?\s*[:=]?\s*([0-9][0-9.,]*)/i
+];
+const PROMO_PATTERN =
+  /discord|support (the )?project|donat|ko-?fi|patreon|buy me a coffee|add to liked|add to (your )?library|telegram|follow us|rate (this|us)/i;
+const orderKeyCache = typeof WeakMap === "function" ? new WeakMap() : null;
+
+function streamSearchText(stream) {
+  return [stream?.name, stream?.title, stream?.description, stream?.quality]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function resolutionTier(text) {
+  const lower = text.toLowerCase();
+  if (lower.indexOf("1080") >= 0) return 0;
+  if (lower.indexOf("720") >= 0) return 1;
+  if (lower.indexOf("2160") >= 0 || lower.indexOf("4k") >= 0 || lower.indexOf("uhd") >= 0) return 2;
+  return 3;
+}
+
+function seedCount(text) {
+  for (let index = 0; index < SEED_PATTERNS.length; index += 1) {
+    const match = SEED_PATTERNS[index].exec(text);
+    if (match) {
+      const value = parseInt(String(match[1]).replace(/[^0-9]/g, ""), 10);
+      if (isFinite(value)) return value;
+    }
+  }
+  return -1;
+}
+
+function orderKey(stream) {
+  if (orderKeyCache && orderKeyCache.has(stream)) return orderKeyCache.get(stream);
+  const text = streamSearchText(stream);
+  const key = resolutionTier(text) * 1e10 - seedCount(text);
+  if (orderKeyCache && stream && typeof stream === "object") orderKeyCache.set(stream, key);
+  return key;
+}
+
+function orderForTv(items) {
+  if (!Array.isArray(items) || items.length < 2) return items;
+  return items
+    .map((stream, index) => ({ stream, index, key: orderKey(stream) }))
+    .sort((left, right) => left.key - right.key || left.index - right.index)
+    .map((entry) => entry.stream);
+}
+
+// Add-on promo rows ("Support project", "Join Discord", "Add to liked"...) are not videos.
+export function isPromoEntry(stream = {}) {
+  if (stream?.infoHash) return false;
+  const label = [stream?.name, stream?.title].filter(Boolean).join(" ");
+  return PROMO_PATTERN.test(label);
 }
 
 /**

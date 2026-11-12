@@ -26,6 +26,20 @@ export function createPlayerScreenMethods68() {
 
         let repositorySubtitles = [];
 
+        // Personal build: lazy add-on subtitles. Let playback start first (max 20 s) so the
+        // fetch and list processing do not compete with startup and the controls.
+        const lazyDeadline = Date.now() + 20000;
+        while (
+          this.subtitleLoadToken === requestToken &&
+          Date.now() < lazyDeadline &&
+          !(Number(PlayerController.getCurrentTimeSeconds?.() || 0) > 0.5)
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        if (this.subtitleLoadToken !== requestToken) {
+          return;
+        }
+
         try {
           if (subtitleLookup.id && subtitleLookup.type) {
             repositorySubtitles = await subtitleRepository.getSubtitles(

@@ -1,57 +1,43 @@
-<div align="center">
+# Nuvio TV Turbo (Samsung Tizen fork)
 
-  <img src="assets/brand/app_logo_wordmark.png" alt="Nuvio" width="300" />
+A personal fork of [NuvioMedia/NuvioWeb](https://github.com/NuvioMedia/NuvioWeb), the Nuvio smart TV web app for Samsung Tizen and LG webOS.
 
-  <p>
-    A free, open-source media app for your phone, your desktop, and the TV you already own.
-    <br />
-    Bring your own sources. Nuvio turns them into a library with artwork, ratings, subtitles, and your place saved on every screen.
-  </p>
+**Goal:** the same lean, remote-friendly Nuvio on an older Samsung TV as on my Android TV, with fewer distractions and a source list that favours what the TV can actually play well.
 
-[Website](https://nuvio.tv) · [GitHub releases](https://github.com/NuvioMedia/NuvioTVSmart/releases/latest) · [Support Nuvio](https://nuvio.tv/support)
+**Target TV:** Samsung QE55Q70TATXTK (Q70T, 2020), Tizen 5.5, 32-bit ARM. Sister project for a Philips QM163E Android TV: [NuvioTV fork](https://github.com/FeridunDuran/NuvioTV).
 
-</div>
+This is not an official Nuvio build. All credit for the app goes to the Nuvio team; see the upstream repository for the full documentation, installer and support links.
 
-## Get Nuvio TV
+## What is different from upstream
 
-Nuvio TV supports **Samsung Tizen TVs from 2018 onward (Tizen 4+)** and **LG webOS TVs from 2020 onward (webOS 5+)**.
-The startup compatibility baseline is Samsung Tizen 4.0 / Chromium 56 and LG webOS 5.0 / Chromium 68 when the platform reports those versions.
+| Area        | Change                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Updates     | The in-app update check is off; the fork is installed by hand.                                                                                                                 |
+| Source list | Inside each provider: 1080p first, then 720p, then 4K, then the rest. Inside a tier the most seeded torrent comes first. Streams without a seed count keep the add-on's order. |
+| Source list | Add-on promo rows ("Support project", "Join Discord", "Add to liked" and similar) are hidden.                                                                                  |
+| Subtitles   | Add-on subtitles are fetched only after playback has started (20 s at most), so they do not compete with video startup.                                                        |
+| Player      | The focused control shows its name under the icon.                                                                                                                             |
 
-Platform capabilities are intentionally version-dependent:
+Changes live on the `turbo` branch. `main` tracks upstream.
 
-- **Samsung Tizen 4.x** — the app and direct playback are supported, but torrent/P2P playback is unavailable by design. Some advanced audio and subtitle features may also be limited.
-- **Samsung Tizen 5.x, including 5.5** — torrent/P2P playback is supported through the bundled local EngineFS service only. The PluginService, plugin execution, and remote plugin pull/push synchronization are disabled; the Plugins screen is not available.
-  The Node 4.4.3 service runtime observed on Tizen 5.5 is incompatible with the current PluginService syntax and URL APIs. Experimental legacy transports are not included; plugin support starts at Tizen 6.0.
-- **Samsung Tizen 6+** — torrent/P2P and the packaged PluginService are supported. Plugin execution requires the packaged service plus the TV runtime's Worker and WebAssembly support. Tizen 6 and later use the same current Tizen service pipeline.
-- **LG webOS 5.x** — torrent/P2P and the packaged plugin service are supported, with the limited plugin resource quotas used by the older webOS runtime.
-- **LG webOS 6+** — torrent/P2P and the packaged plugin service are supported with the modern plugin resource quotas.
+## Platform notes for Tizen 5.5
 
-On Tizen 5+ and LG webOS, torrent/P2P uses only the bundled local companion service; no external torrent streaming server is configured or required.
+- Torrent playback works through the bundled local EngineFS service; no external server is needed.
+- The Nuvio plugin system is unavailable below Tizen 6 (upstream limitation: the TV's service runtime is Node 4.4.3). Regular add-ons are unaffected.
 
-- [Nuvio TV Installer](https://github.com/NuvioMedia/NuvioTVSmart/releases/latest) for Windows, macOS, and Linux
-- [Samsung Tizen WGT](https://github.com/NuvioMedia/NuvioTVSmart/releases/latest) for manual installation
-- [LG webOS Homebrew repository](https://raw.githubusercontent.com/NuvioMedia/NuvioTVWebOS/main/webosbrew/apps.json)
-- [LG webOS IPK](https://github.com/NuvioMedia/NuvioTVSmart/releases/latest) for manual installation
-
-## Build from source
+## Build
 
 ```bash
-git clone https://github.com/NuvioMedia/NuvioTVSmart.git NuvioTVSmart
-cd NuvioTVSmart
-npm install
-npm run build
-```
-
-Build TV packages with:
-
-```bash
+npm ci
 npm run package:tizen
-npm run package:tizen:store
-npm run package:webos
 ```
 
-`package:tizen` creates the unsigned WGT used by development and the Nuvio TV Installer. The installer signs it locally for the target TV before installation. `package:tizen:store` is a separate Seller Office build: it requires Tizen Studio/Web CLI and a configured security profile, and creates the signed Store package with the local EngineFS service included so Tizen 5+ retains torrent/P2P playback. Tizen 4 still reports P2P as unsupported at runtime. Nuvio TV is built with JavaScript, HTML, CSS, and platform TV APIs. Building requires Node.js and npm; package installation additionally requires the relevant Tizen or webOS tools.
+Requires a `local.properties` (see `local.example.properties`); it is not committed. The package is an unsigned development WGT and must be signed for the target TV before installation.
+
+## Status
+
+Built and packaged; not yet verified on the TV.
 
 ## License
 
-[GNU General Public License v3.0](./LICENSE)
+Same license as upstream; see [LICENSE](LICENSE).

@@ -471,3 +471,28 @@
   gap: 12px;
   padding: 4px;
 }
+
+/* Personal build: show the control's name under the focused player button. */
+.player-control-btn:focus,
+.player-control-btn.focused {
+  position: relative;
+  overflow: visible;
+}
+.player-control-btn[title]:focus::after,
+.player-control-btn[title].focused::after {
+  content: attr(title);
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  margin-top: 0.4vh;
+  padding: 0.2vh 0.6vw;
+  border-radius: 0.4vh;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 1.5vh;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
