@@ -71,12 +71,28 @@ export function startHomeContinueWatchingLoad(context) {
       );
       this.allProgress = Array.isArray(allProgress) ? allProgress : [];
       this.continueWatching = Array.isArray(continueWatching) ? continueWatching : [];
-      this.watchedItems = await watchedItemsPromise;
-      this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
-      void this.refreshWatchedTitleState({ token });
+      // Resume cards already have usable playback data. Publish them before the
+      // independent watched-history/Next Up lookup, including a background
+      // refresh whose earlier load was cancelled before it painted any cards.
+      const rawDisplay = buildVisibleContinueWatchingItems(this.continueWatching, {
+        requireArtwork: false
+      });
+      if (rawDisplay.length && (!suppressContinueWatchingLoading || !this.continueWatchingDisplay?.length)) {
+        const changed =
+          this.continueWatchingLoading ||
+          buildContinueWatchingSignature(this.continueWatchingDisplay) !== buildContinueWatchingSignature(rawDisplay);
+        this.continueWatchingDisplay = rawDisplay;
+        this.continueWatchingLoading = false;
+        this.persistContinueWatchingSnapshot();
+        if (changed) this.requestBackgroundRender();
+      }
+      const watchedItems = await watchedItemsPromise;
       if (!isCurrentHomeContinueWatchingLoad()) {
         return;
       }
+      this.watchedItems = Array.isArray(watchedItems) ? watchedItems : [];
+      this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
+      void this.refreshWatchedTitleState({ token });
       this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(this.allProgress, this.continueWatching, this.watchedItems, {
         ...nextUpSeedOptions,
         nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
