@@ -204,7 +204,32 @@ export function createHomeScreenMethods04() {
     requestBackgroundRender() {
       this.requestRender({ delayMs: this.getBackgroundRenderDelay() });
     },
+    // Personal build: rows that arrive while the user keeps pressing Down were never drawn,
+    // because every press restarted the input deferral below; focus then got stuck on the
+    // last drawn rows. When focus is on one of the last two drawn rows and more catalog rows
+    // are waiting, render now.
+    hasPendingRowsBelowFocus() {
+      const container = this.container;
+      if (!container) {
+        return false;
+      }
+      const tracks = container.querySelectorAll(".home-track:not(.home-track-continue), .home-grid-track");
+      const pendingRows = Number(this.rows?.length || 0) - tracks.length;
+      if (pendingRows <= 0) {
+        return false;
+      }
+      const active = document.activeElement;
+      const focusedTrack = active?.closest?.(".home-track, .home-grid-track");
+      if (!focusedTrack) {
+        return false;
+      }
+      const index = Array.prototype.indexOf.call(tracks, focusedTrack);
+      return index >= tracks.length - 2;
+    },
     shouldDeferHomeRenderForInput() {
+      if (this.hasPendingRowsBelowFocus()) {
+        return false;
+      }
       if (this.layoutMode === "modern" && this.hasUserInteractedSinceHomePaint && this.shouldSuspendModernViewportFocusSync()) {
         return true;
       }
