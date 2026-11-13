@@ -3,6 +3,7 @@ import * as internals from "./homeScreenContext.js";
 
 export function createHomeScreenMethods07() {
   const {
+    Router,
     watchedItemsRepository,
     savedLibraryRepository,
     libraryRepository,
@@ -27,7 +28,7 @@ export function createHomeScreenMethods07() {
         title: item.title || "Untitled",
         subtitle: t("cw_dialog_subtitle", {}, "Choose what you want to do with this item."),
         widthVw: 37.5,
-        suppressEnterUntilKeyUp: true,
+        suppressEnterUntilKeyUp: false,
         buttons: options.map((option, index) => ({
           label: option.label,
           key: option.action,
@@ -41,7 +42,7 @@ export function createHomeScreenMethods07() {
         })),
         onDismiss: () => this.dismissContinueWatchingMenu()
       }).mount(document.body);
-      this.suppressHoldMenuEnterUntilKeyUp = true;
+      this.suppressHoldMenuEnterUntilKeyUp = false;
       this.scheduleHoldMenuScrollRestore();
       return true;
     },
@@ -57,7 +58,7 @@ export function createHomeScreenMethods07() {
         title: item.name || "Untitled",
         subtitle: t("home_poster_dialog_subtitle", {}, "Title actions"),
         widthVw: 37.5,
-        suppressEnterUntilKeyUp: true,
+        suppressEnterUntilKeyUp: false,
         buttons: options.map((option, index) => ({
           label: option.label,
           key: option.action,
@@ -71,7 +72,7 @@ export function createHomeScreenMethods07() {
         })),
         onDismiss: () => this.dismissPosterHoldMenu()
       }).mount(document.body);
-      this.suppressHoldMenuEnterUntilKeyUp = true;
+      this.suppressHoldMenuEnterUntilKeyUp = false;
       this.scheduleHoldMenuScrollRestore();
       return true;
     },
@@ -132,12 +133,11 @@ export function createHomeScreenMethods07() {
       if (!item?.id) {
         return false;
       }
-      const tabs = await libraryRepository.getListTabs().catch(() => []);
-      const contentType = item.type || "movie";
-      const resolvedTabs =
-        Array.isArray(tabs) && tabs.length
-          ? tabs.filter((tab) => supportsMembershipFor(tab, contentType))
-          : [{ key: "local", title: t("detail.library", {}, "Library"), type: "local" }];
+      const request = (this.homeMenuRequestToken || 0) + 1;
+      this.homeMenuRequestToken = request;
+      const loadToken = this.homeLoadToken;
+      const tabsPromise = libraryRepository.getListTabs().catch(() => []);
+      const sourceModePromise = libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL);
       const libraryItem = {
         itemId: item.id,
         imdbId: item.imdbId || item.ids?.imdb || null,
@@ -152,7 +152,17 @@ export function createHomeScreenMethods07() {
         imdbRating: item.imdbRating == null ? null : Number(item.imdbRating),
         genres: Array.isArray(item.genres) ? item.genres : []
       };
-      const snapshot = await libraryRepository.getMembershipSnapshot(libraryItem).catch(() => ({ listMembership: {} }));
+      const [tabs, snapshot, sourceMode] = await Promise.all([
+        tabsPromise,
+        libraryRepository.getMembershipSnapshot(libraryItem).catch(() => ({ listMembership: {} })),
+        sourceModePromise
+      ]);
+      if (request !== this.homeMenuRequestToken || loadToken !== this.homeLoadToken || Router.getCurrent() !== "home") return false;
+      const contentType = item.type || "movie";
+      const resolvedTabs =
+        Array.isArray(tabs) && tabs.length
+          ? tabs.filter((tab) => supportsMembershipFor(tab, contentType))
+          : [{ key: "local", title: t("detail.library", {}, "Library"), type: "local" }];
       if (this.posterHoldMenu) {
         this.pendingPosterHoldFocus = {
           rowIndex: Number(this.posterHoldMenu.rowIndex || 0),
@@ -164,7 +174,7 @@ export function createHomeScreenMethods07() {
       this.posterHoldMenu = null;
       this.posterListPicker = {
         item: libraryItem,
-        sourceMode: await libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL),
+        sourceMode,
         tabs: resolvedTabs,
         membership: Object.fromEntries(resolvedTabs.map((tab) => [tab.key, Boolean(snapshot?.listMembership?.[tab.key])])),
         error: ""
@@ -251,12 +261,22 @@ export function createHomeScreenMethods07() {
       this.cancelPendingContinueWatchingHold();
       this.continueWatchingMenu = null;
       this.holdMenuScrollState = this.captureHoldMenuScrollState();
-      const [isSaved, repositoryWatched] = await Promise.all([
+      const request = (this.homeMenuRequestToken || 0) + 1;
+      this.homeMenuRequestToken = request;
+      const loadToken = this.homeLoadToken;
+      const [isSaved, repositoryWatched, librarySourceMode] = await Promise.all([
         savedLibraryRepository.isSaved(item.id).catch(() => false),
-        watchedItemsRepository.isWatched(item.id).catch(() => false)
+        watchedItemsRepository.isWatched(item.id).catch(() => false),
+        libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL)
       ]);
+      if (
+        request !== this.homeMenuRequestToken ||
+        loadToken !== this.homeLoadToken ||
+        Router.getCurrent() !== "home" ||
+        !node.classList.contains("focused")
+      )
+        return false;
       const isWatched = isTitleItemWatched(item, this.watchedTitleIds) || Boolean(repositoryWatched);
-      const librarySourceMode = await libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL);
       this.posterHoldMenu = {
         item,
         index: Number(node?.dataset?.itemIndex || 0),

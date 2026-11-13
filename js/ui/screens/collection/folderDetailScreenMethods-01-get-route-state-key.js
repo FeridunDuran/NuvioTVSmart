@@ -131,6 +131,9 @@ export function createFolderDetailScreenMethods01() {
       return true;
     },
     async refreshWatchedTitleIds(items = null, baseWatchedItems = null) {
+      const token = this.folderLoadToken;
+      const request = (this.watchedProjectionRequest || 0) + 1;
+      this.watchedProjectionRequest = request;
       const watchedItems = Array.isArray(baseWatchedItems) ? baseWatchedItems : await watchedItemsRepository.getAll(5000).catch(() => []);
       const folderItems = Array.isArray(items) ? items : (this.tabs || []).flatMap((tab) => (Array.isArray(tab?.items) ? tab.items : []));
       const projectedItems = await watchedTitleStateRepository
@@ -139,7 +142,10 @@ export function createFolderDetailScreenMethods01() {
           limit: 5000
         })
         .catch(() => watchedItems);
+      if (token !== this.folderLoadToken || request !== this.watchedProjectionRequest || Router.getCurrent() !== "folderDetail")
+        return false;
       this.watchedTitleIds = buildWatchedTitleIdSet(projectedItems);
+      return true;
     },
     async mount(params = {}, navigationContext = {}) {
       this.container = document.getElementById("folderDetail");
@@ -206,14 +212,16 @@ export function createFolderDetailScreenMethods01() {
       // the same route-first ordering here; the existing tab loader remains the
       // single source of truth for source results and pagination.
       void (async () => {
-        const [addons, watchedItems] = await Promise.all([
-          addonRepository.getInstalledAddons().catch(() => []),
-          watchedItemsRepository.getAll(5000).catch(() => [])
-        ]);
+        const watchedItemsPromise = watchedItemsRepository.getAll(5000).catch(() => []);
+        const addons = await addonRepository.getInstalledAddons().catch(() => []);
         if (folderLoadToken !== this.folderLoadToken || Router.getCurrent() !== "folderDetail") {
           return;
         }
-        this.watchedTitleIds = buildWatchedTitleIdSet(watchedItems);
+        void watchedItemsPromise.then((watchedItems) => {
+          if (folderLoadToken === this.folderLoadToken && Router.getCurrent() === "folderDetail") {
+            this.watchedTitleIds = buildWatchedTitleIdSet(watchedItems);
+          }
+        });
         const folderSources =
           Array.isArray(this.folder.sources) && this.folder.sources.length
             ? this.folder.sources
@@ -274,8 +282,10 @@ export function createFolderDetailScreenMethods01() {
         this.render();
         await Promise.all(tabsToLoad.map((index) => this.loadTab(index, { background: true, loadToken: folderLoadToken })));
         if (folderLoadToken === this.folderLoadToken && Router.getCurrent() === "folderDetail") {
-          await this.refreshWatchedTitleIds(null, watchedItems);
-          if (tabsToLoad.length) {
+          const watchedItems = await watchedItemsPromise;
+          if (folderLoadToken !== this.folderLoadToken || Router.getCurrent() !== "folderDetail") return;
+          const changed = await this.refreshWatchedTitleIds(null, watchedItems);
+          if (changed && tabsToLoad.length && folderLoadToken === this.folderLoadToken && Router.getCurrent() === "folderDetail") {
             this.render();
           }
         }

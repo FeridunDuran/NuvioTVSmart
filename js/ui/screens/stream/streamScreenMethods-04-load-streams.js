@@ -62,10 +62,14 @@ export function createStreamScreenMethods04() {
       const badgeSettings = StreamBadgeSettingsStore.snapshot();
       const showAddonLogo = badgeSettings.showAddonLogo === true;
       if (showAddonLogo) {
-        await ensureAddonLogoImageProxyReady();
-        if (token !== this.loadToken) {
-          return;
-        }
+        // A cosmetic proxy must not delay starting the provider search.
+        void ensureAddonLogoImageProxyReady()
+          .then((ready) => {
+            if (!ready || token !== this.loadToken) return;
+            this.streams = this.applyAddonLogos(this.streams);
+            this.requestRender({ delayMs: 0 });
+          })
+          .catch((error) => console.warn("Stream logo proxy background load failed", error));
       }
 
       const upsertSourceChip = (addon, status = "loading") => {

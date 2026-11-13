@@ -146,6 +146,7 @@ export function createHomeScreenMethods21() {
             timeoutMs: HOME_ADDON_MANIFEST_TIMEOUT_MS
           })
         : await addonRepository.getInstalledAddons({ cacheOnly: true });
+      if (token !== this.homeLoadToken || Router.getCurrent() !== "home") return;
       this.collections = CollectionsStore.get();
       const catalogDescriptors = [];
 
@@ -241,23 +242,20 @@ export function createHomeScreenMethods21() {
         }
       });
       if (!background && !this.hasLoadedOnce) {
-        // Read the last successful catalog in parallel with the network. If
-        // the addons answer first, the progressive rows above already won and
-        // this snapshot is ignored; if the disk answers first, Home paints
-        // while the same network refresh continues.
-        const cachedRows = await Promise.race([
-          readSnapshotWithTimeout({ key: homeCatalogSnapshotKey }),
-          initialRowsPromise.then(() => null).catch(() => null)
-        ]);
-        if (cachedRows?.length && token === this.homeLoadToken && Router.getCurrent() === "home" && !this.hasLoadedOnce) {
-          this.loadedProfileId = String(ProfileManager.getActiveProfileId() || "");
-          this.rows = this.sortAndFilterRows(cachedRows, this.collections);
-          this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
-          this.heroItem = this.pickInitialHero();
-          this.releaseInitialHomeLoading();
-          this.hasLoadedOnce = true;
-          this.render();
-        }
+        // Disk cache is independent of the network pipeline. A slow IndexedDB
+        // open must not postpone starting the deferred provider requests.
+        void readSnapshotWithTimeout({ key: homeCatalogSnapshotKey })
+          .then((cachedRows) => {
+            if (!cachedRows?.length || token !== this.homeLoadToken || Router.getCurrent() !== "home" || this.hasLoadedOnce) return;
+            this.loadedProfileId = String(ProfileManager.getActiveProfileId() || "");
+            this.rows = this.sortAndFilterRows(cachedRows, this.collections);
+            this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+            this.heroItem = this.pickInitialHero();
+            this.releaseInitialHomeLoading();
+            this.hasLoadedOnce = true;
+            this.render();
+          })
+          .catch((error) => console.warn("Home snapshot background read failed", error));
       }
       // Start the visible rows first. Overlap one deferred batch only on a
       // foreground load where the runtime can afford the extra requests.

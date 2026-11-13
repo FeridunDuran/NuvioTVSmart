@@ -107,7 +107,7 @@ export function createTmdbEntityBrowseScreenMethods01() {
       this.posterOptionsController = null;
       this.posterOptionsFocusKey = "";
       this.pendingPosterHoldTarget = null;
-      this.pendingPosterHoldTimer = null;
+      this.pendingPosterHoldActive = null;
 
       if (navigationContext?.isBackNavigation && this.hydrateFromRouteState(navigationContext?.restoredState || null, params)) {
         this.render();

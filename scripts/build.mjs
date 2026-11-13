@@ -19,7 +19,8 @@ const distDir = path.join(rootDir, "dist");
 const requireConfiguredRuntimeEnv = /^(1|true|yes|on)$/i.test(
   String(process.env.NUVIO_REQUIRE_LOCAL_PROPERTIES || "")
 );
-const debugBundle = /^(1|true|yes|on)$/i.test(String(process.env.NUVIO_DEBUG_BUNDLE || ""));
+// Production on the single target TV: don't ship debug parse/map overhead.
+const debugBundle = false;
 const legacyViewport = {
   width: 1920,
   height: 1080,
@@ -638,7 +639,8 @@ async function buildBundle() {
     metafile: true,
     define: {
       "process.env.NODE_ENV": '"production"',
-      __NUVIO_APP_VERSION__: JSON.stringify(version)
+      __NUVIO_APP_VERSION__: JSON.stringify(version),
+      __NUVIO_Q70T_BUILD__: "true"
     }
   });
   if (
@@ -654,6 +656,20 @@ async function runBuild() {
     await rm(distDir, { recursive: true, force: true });
     await mkdir(distDir, { recursive: true });
 
+    await writeFile(
+      path.join(distDir, "build-profile.json"),
+      JSON.stringify(
+        {
+          profile: compatibilityPolicy.buildProfile,
+          chromiumTarget: compatibilityPolicy.chromiumVersion,
+          sourcemap: debugBundle,
+          textFonts: "local-roboto",
+          pluginServiceDefault: compatibilityPolicy.includeTizenPluginService
+        },
+        null,
+        2
+      )
+    );
     console.log("building version files...");
     await syncVersionFiles();
     await buildCSS();

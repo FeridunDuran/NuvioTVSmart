@@ -1,5 +1,6 @@
 import { createStreamRedirectReporter } from "./streamRedirect.js";
 import { applyAdaptiveRequestHeaders } from "./adaptiveRequestHeaders.js";
+import { q70tPlaybackPolicy } from "./q70tPlaybackPolicy.js";
 /* eslint-disable no-unused-vars */
 import * as internals from "./playerController.js";
 
@@ -37,14 +38,15 @@ export function createPlayerControllerMethods13() {
       const forwardedHeaders = this.normalizePlaybackHeaders(requestHeaders);
       const isWebOs = Platform.isWebOS();
       const isLivePlayback = this.isLivePlaybackItemType();
+      const bufferPolicy = q70tPlaybackPolicy();
       return {
         autoStartLoad: false,
         enableWorker: !isWebOs,
         lowLatencyMode: false,
         initialLiveManifestSize: isWebOs && isLivePlayback ? WEBOS_LIVE_INITIAL_MANIFEST_SIZE : 1,
         backBufferLength: HLS_BACK_BUFFER_SECONDS,
-        maxBufferLength: HLS_MAX_BUFFER_SECONDS,
-        maxMaxBufferLength: HLS_MAX_BUFFER_SECONDS,
+        maxBufferLength: bufferPolicy.enabled ? bufferPolicy.hlsBufferSeconds : HLS_MAX_BUFFER_SECONDS,
+        maxMaxBufferLength: bufferPolicy.enabled ? bufferPolicy.hlsBufferSeconds : HLS_MAX_BUFFER_SECONDS,
         maxBufferHole: 0.5,
         startFragPrefetch: false,
         // Android PlayerLoadErrorHandlingPolicy (DefaultLoadErrorHandlingPolicy(6)) keeps

@@ -31,6 +31,7 @@ export function createMetaDetailsScreenMethods15() {
 
   return {
     async refreshEpisodePlaybackState() {
+      const token = this.detailLoadToken;
       detailWatchedEnrichmentService.invalidateCache(this.params?.itemId);
       const [progress, allProgressItems, allWatchedItems, watchedItem] = await Promise.all([
         watchProgressRepository.getResumeByContentIds(this.resumeContentIds?.length ? this.resumeContentIds : [this.params?.itemId]),
@@ -38,7 +39,9 @@ export function createMetaDetailsScreenMethods15() {
         watchedItemsRepository.getAll(),
         watchedItemsRepository.isWatched(this.params?.itemId)
       ]);
+      if (token !== this.detailLoadToken) return;
       const projectedTitleWatched = await isDetailTitleWatched(this.params?.itemId, this.params?.itemType, this.meta, allWatchedItems);
+      if (token !== this.detailLoadToken) return;
       this.resumeProgress = progress && isWatchProgressInProgress(progress) ? progress : null;
       const detailContentReference = buildDetailContentReference(this.params?.itemId, this.meta, this.params);
       this.isMarkedWatched = Boolean(
@@ -52,6 +55,7 @@ export function createMetaDetailsScreenMethods15() {
       this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress || progress);
     },
     async setEpisodeWatchedState(episode, watched) {
+      this.detailPlaybackMutationToken = (this.detailPlaybackMutationToken || 0) + 1;
       const profileId = ProfileManager.getActiveProfileId();
       const token = this.detailLoadToken;
       const current = () => ProfileManager.getActiveProfileId() === profileId && this.detailLoadToken === token;

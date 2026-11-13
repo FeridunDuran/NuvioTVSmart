@@ -18,10 +18,11 @@ function isParked(section) {
   return Boolean(section?.classList?.contains(HOME_ROW_PARKED_CLASS));
 }
 
-function unpark(section) {
+function unpark(section, onRestore) {
   if (!isParked(section)) {
     return false;
   }
+  onRestore?.(section);
   section.classList.remove(HOME_ROW_PARKED_CLASS);
   section.style.height = "";
   return true;
@@ -34,6 +35,9 @@ function holdsFocus(section) {
 export function createHomeRowWindow({
   root,
   rootMargin = DEFAULT_ROOT_MARGIN,
+  onPark = null,
+  onRestore = null,
+  onFocusRow = null,
   scope = globalThis
 } = {}) {
   const observed = new Set();
@@ -54,8 +58,9 @@ export function createHomeRowWindow({
     parked.forEach(([section, height]) => {
       section.style.height = `${height}px`;
       section.classList.add(HOME_ROW_PARKED_CLASS);
+      onPark?.(section);
     });
-    entering.forEach(unpark);
+    entering.forEach((section) => unpark(section, onRestore));
   };
 
   const connect = () => {
@@ -90,8 +95,9 @@ export function createHomeRowWindow({
       if (!section) {
         return false;
       }
+      onFocusRow?.(section);
       const changed = [section.previousElementSibling, section, section.nextElementSibling]
-        .map(unpark)
+        .map((section) => unpark(section, onRestore))
         .some(Boolean);
       if (changed) {
         this.refresh();
@@ -105,7 +111,7 @@ export function createHomeRowWindow({
       let changed = false;
       observed.forEach((section) => {
         if (wanted.has(String(section.dataset?.rowKey || ""))) {
-          changed = unpark(section) || changed;
+          changed = unpark(section, onRestore) || changed;
         }
       });
       if (changed) {
@@ -116,7 +122,7 @@ export function createHomeRowWindow({
     unparkAll() {
       let changed = false;
       observed.forEach((section) => {
-        changed = unpark(section) || changed;
+        changed = unpark(section, onRestore) || changed;
       });
       if (changed) {
         this.refresh();

@@ -74,6 +74,9 @@ export function createDiscoverScreenMethods01() {
       });
     },
     async refreshWatchedTitleIds(items = this.items) {
+      const token = this.loadToken;
+      const request = (this.watchedProjectionRequest || 0) + 1;
+      this.watchedProjectionRequest = request;
       const watchedItems = await watchedItemsRepository.getAll(5000).catch(() => []);
       const projectedItems = await watchedTitleStateRepository
         .getTitleWatchedItems(Array.isArray(items) ? items : [], {
@@ -81,7 +84,15 @@ export function createDiscoverScreenMethods01() {
           limit: 5000
         })
         .catch(() => watchedItems);
+      if (
+        token !== this.loadToken ||
+        request !== this.watchedProjectionRequest ||
+        Router.getCurrent() !== "discover" ||
+        items !== this.items
+      )
+        return false;
       this.watchedTitleIds = buildWatchedTitleIdSet(projectedItems);
+      return true;
     },
     getRouteStateKey() {
       return "discover";
@@ -182,7 +193,7 @@ export function createDiscoverScreenMethods01() {
       this.posterOptionsController = null;
       this.pendingPosterOptionsFocusKey = "";
       this.pendingPosterHoldTarget = null;
-      this.pendingPosterHoldTimer = null;
+      this.pendingPosterHoldActive = null;
       this.pickerOptionIndex = 0;
       this.lastFocusedAction = "discoverFilterType";
       this.lastFocusedKey = null;
@@ -215,15 +226,14 @@ export function createDiscoverScreenMethods01() {
 
       void (async () => {
         try {
-          await this.refreshWatchedTitleIds();
-          if (routeLoadToken !== this.loadToken || Router.getCurrent() !== "discover") {
-            return;
-          }
           if (hasRestoredRouteState) {
             this.suppressInitialLoadingRenders = false;
-            this.requestRender();
+            const changed = await this.refreshWatchedTitleIds();
+            if (changed && routeLoadToken === this.loadToken && Router.getCurrent() === "discover") this.requestRender();
             return;
           }
+          // New catalog requests must not queue behind watched-history IO.
+          // loadNextPage projects watched badges after publishing its results.
           await this.loadCatalogsAndContent();
         } catch (err) {
           if (routeLoadToken !== this.loadToken || Router.getCurrent() !== "discover") {

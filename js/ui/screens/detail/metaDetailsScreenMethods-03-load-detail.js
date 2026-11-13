@@ -1,6 +1,17 @@
 /* eslint-disable no-unused-vars */
 import * as internals from "./metaDetailsScreenContext.js";
 
+function fillMissingDetailFields(meta, fallback) {
+  const merged = { ...meta };
+  ["background", "poster", "logo", "description"].forEach((key) => {
+    if (!merged[key] && fallback?.[key]) merged[key] = fallback[key];
+  });
+  ["genres", "videos"].forEach((key) => {
+    if (!merged[key]?.length && Array.isArray(fallback?.[key]) && fallback[key].length) merged[key] = fallback[key];
+  });
+  return merged;
+}
+
 export function createMetaDetailsScreenMethods03() {
   const {
     metaRepository,
@@ -34,12 +45,57 @@ export function createMetaDetailsScreenMethods03() {
   return {
     async loadDetail() {
       const token = this.detailLoadToken;
+      const initialLibraryMutationToken = this.libraryMembershipMutationToken || 0;
+      const initialPlaybackMutationToken = this.detailPlaybackMutationToken || 0;
       this.detailEnrichmentComplete = false;
       let { itemId, itemType = "movie", fallbackTitle = "Untitled" } = this.params || {};
       if (!itemId) {
         this.renderError("Item id mancante.");
         return;
       }
+
+      // Paint route artwork/cached metadata before canonicalization or network IO.
+      let hasBasePaint = false;
+      let stateSnapshot = null;
+      const showBaseMeta = (baseMeta) => {
+        const sameLayout =
+          hasBasePaint &&
+          isSeriesDetailMeta(this.meta, this.episodes) ===
+            isSeriesDetailMeta(baseMeta, normalizeEpisodes(baseMeta?.videos || [], baseMeta?.type || itemType));
+        this.meta = baseMeta;
+        this.episodes = normalizeEpisodes(baseMeta?.videos || [], baseMeta?.type || itemType);
+        this.castItems = extractCast(baseMeta);
+        this.nextEpisodeToWatch = null;
+        this.moreLikeThisItems = [];
+        this.moreLikeThisSource = null;
+        this.collectionItems = [];
+        this.collectionName = "";
+        this.streamItems = [];
+        this.seriesRatingsBySeason = {};
+        this.trailerSource = resolveTrailerSource(baseMeta);
+        if (sameLayout) this.updateRenderedDetailSections(baseMeta);
+        else this.render(baseMeta);
+        hasBasePaint = true;
+        this.container?.setAttribute("aria-busy", "true");
+        if (this.pendingDetailPlayOptions && this.episodes.length) {
+          const playOptions = this.pendingDetailPlayOptions;
+          this.pendingDetailPlayOptions = null;
+          void this.playDefaultFromHero(playOptions);
+        }
+      };
+      this.detailStatePending = true;
+      this.isSavedInLibrary = false;
+      this.isMarkedWatched = false;
+      showBaseMeta(
+        metaRepository.getCachedMeta(itemType, itemId) || {
+          id: itemId,
+          type: itemType,
+          name: fallbackTitle,
+          poster: this.params?.fallbackPoster || null,
+          background: this.params?.fallbackBackground || null,
+          description: ""
+        }
+      );
 
       const sourceItemId = itemId;
       const sourceAddonBaseUrl = String(this.params?.addonBaseUrl || "").trim();
@@ -61,8 +117,11 @@ export function createMetaDetailsScreenMethods03() {
         itemId = canonicalItemId;
       }
 
+      let artworkPromise = null;
       const loadMeta = async () => {
-        const globalResultPromise = metaRepository.getMetaFromAllAddons(itemType, itemId);
+        const globalResultPromise = metaRepository
+          .getMetaFromAllAddons(itemType, itemId)
+          .catch(() => ({ status: "error", message: "Meta request failed" }));
         if (sourceAddonBaseUrl && LayoutPreferences.get().preferExternalMetaAddonDetail !== false) {
           const sourceResult = await withTimeout(metaRepository.getMeta(sourceAddonBaseUrl, sourceItemType, sourceItemId), 1800, {
             status: "error",
@@ -71,28 +130,8 @@ export function createMetaDetailsScreenMethods03() {
           if (sourceResult.status === "success") {
             const sourceMeta = sourceResult.data || {};
             if (!sourceMeta.background) {
-              const ownerResult = await withTimeout(globalResultPromise, 2200, {
-                status: "error",
-                message: "timeout"
-              });
-              if (ownerResult.status === "success") {
-                const ownerMeta = ownerResult.data || {};
-                return {
-                  status: "success",
-                  data: {
-                    ...ownerMeta,
-                    ...sourceMeta,
-                    id: sourceMeta.id || ownerMeta.id || sourceItemId,
-                    type: sourceMeta.type || ownerMeta.type || sourceItemType,
-                    poster: sourceMeta.poster || ownerMeta.poster || null,
-                    background: sourceMeta.background || ownerMeta.background || null,
-                    logo: sourceMeta.logo || ownerMeta.logo || null,
-                    description: sourceMeta.description || ownerMeta.description || "",
-                    genres: Array.isArray(sourceMeta.genres) && sourceMeta.genres.length ? sourceMeta.genres : ownerMeta.genres || [],
-                    videos: Array.isArray(sourceMeta.videos) && sourceMeta.videos.length ? sourceMeta.videos : ownerMeta.videos || []
-                  }
-                };
-              }
+              // Missing artwork must not hold the source metadata's first paint.
+              artworkPromise = withTimeout(globalResultPromise, 2200, null);
             }
             return sourceResult;
           }
@@ -123,17 +162,22 @@ export function createMetaDetailsScreenMethods03() {
       const allProgressPromise = getDetailAllProgressPromise();
       const allWatchedPromise = watchedItemsRepository.getAll();
 
-      const [metaResult, isSaved, initialProgress, watchedItem, allProgressItems, allWatchedItems] = await Promise.all([
-        metaPromise,
-        isSavedPromise,
-        progressPromise,
-        watchedItemPromise,
-        allProgressPromise,
-        allWatchedPromise
+      // Observe all state requests immediately, but don't put them on the
+      // metadata paint's critical path. Failed optional state has safe defaults.
+      const statePromise = Promise.all([
+        isSavedPromise.catch(() => false),
+        progressPromise.catch(() => null),
+        watchedItemPromise.catch(() => false),
+        allProgressPromise.catch(() => []),
+        allWatchedPromise.catch(() => [])
       ]);
+      const metaResult = await metaPromise;
       const meta =
         metaResult.status === "success"
-          ? metaResult.data
+          ? fillMissingDetailFields(metaResult.data, {
+              poster: this.params?.fallbackPoster,
+              background: this.params?.fallbackBackground
+            })
           : {
               id: itemId,
               type: itemType,
@@ -145,11 +189,39 @@ export function createMetaDetailsScreenMethods03() {
       if (token !== this.detailLoadToken) {
         return;
       }
+      showBaseMeta(meta);
+      if (token !== this.detailLoadToken) return;
+      if (artworkPromise) {
+        void artworkPromise
+          .then((ownerResult) => {
+            if (token !== this.detailLoadToken || ownerResult?.status !== "success") return;
+            const current = this.meta || meta;
+            const wasSeries = isSeriesDetailMeta(current, this.episodes);
+            this.meta = fillMissingDetailFields(current, ownerResult.data);
+            this.episodes = normalizeEpisodes(this.meta?.videos || [], this.meta?.type || itemType);
+            if (stateSnapshot && initialPlaybackMutationToken === (this.detailPlaybackMutationToken || 0)) {
+              this.buildEpisodeState(stateSnapshot.progressItems, stateSnapshot.watchedItems, this.enrichedWatchedState);
+              this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress);
+              if (!this.hasManualSeasonSelection)
+                this.selectedSeason = this.resolveInitialSelectedSeason(this.resumeProgress, stateSnapshot.progressItems);
+            }
+            if (wasSeries !== isSeriesDetailMeta(this.meta, this.episodes)) this.render(this.meta);
+            else this.updateRenderedDetailSections(this.meta);
+            if (this.pendingDetailPlayOptions && this.episodes.length) {
+              const playOptions = this.pendingDetailPlayOptions;
+              this.pendingDetailPlayOptions = null;
+              void this.playDefaultFromHero(playOptions);
+            }
+          })
+          .catch((error) => console.warn("Detail artwork fallback failed", error));
+      }
+      const [isSaved, initialProgress, watchedItem, allProgressItems, allWatchedItems] = await statePromise;
+      if (token !== this.detailLoadToken) return;
       const projectedTitleWatched = await isDetailTitleWatched(itemId, itemType, meta, allWatchedItems);
       if (token !== this.detailLoadToken) {
         return;
       }
-      this.resumeContentIds = buildResumeContentIds(meta, this.params);
+      this.resumeContentIds = buildResumeContentIds(this.meta, this.params);
       let progress = initialProgress;
       if (!progress && this.resumeContentIds.length > 1) {
         progress = await watchProgressRepository.getResumeByContentIds(this.resumeContentIds).catch((error) => {
@@ -160,24 +232,27 @@ export function createMetaDetailsScreenMethods03() {
           return;
         }
       }
-      this.resumeProgress = progress && isWatchProgressInProgress(progress) ? progress : null;
-      this.isSavedInLibrary = isSaved;
-      const detailContentReference = buildDetailContentReference(itemId, meta, this.params);
-      this.isMarkedWatched = Boolean(
-        projectedTitleWatched ||
-        (watchedItem && !hasInProgressSimklMovieProgress(allProgressItems, detailContentReference)) ||
-        hasCompletedSimklMovieProgress(allProgressItems, detailContentReference) ||
-        (progress && Number(progress.durationMs || 0) > 0 && Number(progress.positionMs || 0) >= Number(progress.durationMs || 0))
-      );
-
-      // Fast first paint with base metadata.
-      this.meta = meta;
-      this.episodes = normalizeEpisodes(meta?.videos || [], meta?.type || itemType);
-      this.castItems = extractCast(meta);
+      if (initialLibraryMutationToken === (this.libraryMembershipMutationToken || 0)) this.isSavedInLibrary = isSaved;
+      const playbackStateUnchanged = initialPlaybackMutationToken === (this.detailPlaybackMutationToken || 0);
+      if (playbackStateUnchanged) {
+        this.resumeProgress = progress && isWatchProgressInProgress(progress) ? progress : null;
+        const detailContentReference = buildDetailContentReference(itemId, meta, this.params);
+        this.isMarkedWatched = Boolean(
+          projectedTitleWatched ||
+          (watchedItem && !hasInProgressSimklMovieProgress(allProgressItems, detailContentReference)) ||
+          hasCompletedSimklMovieProgress(allProgressItems, detailContentReference) ||
+          (progress && Number(progress.durationMs || 0) > 0 && Number(progress.positionMs || 0) >= Number(progress.durationMs || 0))
+        );
+      }
+      // Hydrate controls after the already-visible metadata's state arrives.
+      this.episodes = normalizeEpisodes(this.meta?.videos || [], this.meta?.type || itemType);
+      this.castItems = extractCast(this.meta);
       const progressItemsForDetail = this.resumeProgress ? [this.resumeProgress, ...allProgressItems] : allProgressItems;
-      this.buildEpisodeState(progressItemsForDetail, allWatchedItems);
+      stateSnapshot = { progressItems: progressItemsForDetail, watchedItems: allWatchedItems };
+      if (playbackStateUnchanged) this.buildEpisodeState(progressItemsForDetail, allWatchedItems);
       this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress || progress);
-      this.selectedSeason = this.resolveInitialSelectedSeason(this.resumeProgress || progress, progressItemsForDetail);
+      if (!this.hasManualSeasonSelection)
+        this.selectedSeason = this.resolveInitialSelectedSeason(this.resumeProgress || progress, progressItemsForDetail);
       this.selectedRatingSeason = this.selectedRatingSeason || this.selectedSeason || 1;
       this.moreLikeThisItems = [];
       this.moreLikeThisSource = null;
@@ -190,15 +265,23 @@ export function createMetaDetailsScreenMethods03() {
       } else {
         this.seriesRatingsBySeason = {};
       }
-      this.render(meta);
+      this.detailStatePending = false;
       this.isLoadingDetail = false;
+      this.container?.removeAttribute("aria-busy");
+      this.updateRenderedDetailSections(this.meta);
       void this.refreshLibraryMembership(token);
+      if (this.pendingDetailPlayOptions) {
+        const playOptions = this.pendingDetailPlayOptions;
+        this.pendingDetailPlayOptions = null;
+        void this.playDefaultFromHero(playOptions);
+        if (token !== this.detailLoadToken) return;
+      }
       this.maybeAutoOpenContinueWatchingStream();
       this.maybePlayOnLoad(token);
       void this.refreshTrailerSource(meta, token);
       void this.loadTraktComments({ force: true });
 
-      this.loadDetailEnrichments(meta, token, ratingsPromise, seriesRatingsPromise);
+      this.loadDetailEnrichments(this.meta, token, ratingsPromise, seriesRatingsPromise);
     },
     loadDetailEnrichments(meta, token, ratingsPromise = null, seriesRatingsPromise = Promise.resolve(null)) {
       if (token !== this.detailLoadToken) return;
@@ -234,7 +317,7 @@ export function createMetaDetailsScreenMethods03() {
           return;
         }
         const currentProgressItemsForDetail = this.resumeProgress ? [this.resumeProgress, ...currentProgressItems] : currentProgressItems;
-        this.meta = enrichedMeta || meta;
+        this.meta = fillMissingDetailFields(enrichedMeta || meta, this.meta);
         this.episodes = normalizeEpisodes(this.meta?.videos || [], this.meta?.type || this.params?.itemType);
         this.castItems = extractCast(this.meta);
         this.buildEpisodeState(currentProgressItemsForDetail, currentWatchedItems, this.enrichedWatchedState);

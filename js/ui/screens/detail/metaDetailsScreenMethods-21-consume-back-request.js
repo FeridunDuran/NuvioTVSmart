@@ -16,6 +16,7 @@ export function createMetaDetailsScreenMethods21() {
 
   return {
     consumeBackRequest() {
+      this.detailMenuRequestToken = (this.detailMenuRequestToken || 0) + 1;
       if (this.commentOverlayDialog) {
         this.closeCommentOverlay();
         return true;
@@ -62,10 +63,6 @@ export function createMetaDetailsScreenMethods21() {
         return true;
       }
       if (this.navigateBackFromDetail()) {
-        return true;
-      }
-      if (this.isLoadingDetail) {
-        void Router.backFromPendingNavigation();
         return true;
       }
       return false;

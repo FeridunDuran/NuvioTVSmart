@@ -269,6 +269,7 @@
 }
 
 .search-results-track {
+  position: relative;
   margin-top: 10px;
   display: flex;
   gap: 16px;

@@ -29,9 +29,11 @@ export function hasMountedHomeDom(container) {
 }
 
 function children(node) {
-  return Array.from(node.childNodes).filter(
-    (child) => child.nodeType !== 3 || child.textContent.trim()
-  );
+  const result = [];
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType !== 3 || child.textContent.trim()) result.push(child);
+  }
+  return result;
 }
 
 function key(node) {
@@ -58,18 +60,123 @@ function signature(node) {
     : undefined;
 }
 
+class TokenSnapshot {
+  constructor(tokens) {
+    this.tokens = tokens;
+  }
+  contains(token) {
+    return this.tokens.includes(token);
+  }
+  item(index) {
+    return this.tokens[index] || null;
+  }
+  [Symbol.iterator]() {
+    return this.tokens[Symbol.iterator]();
+  }
+}
+class StyleSnapshot {
+  constructor(style) {
+    this.names = Array.from(style || []);
+    this.values = Object.create(null);
+    this.names.forEach((name) => {
+      this.values[name] = [style.getPropertyValue(name), style.getPropertyPriority(name)];
+    });
+  }
+  getPropertyValue(name) {
+    return this.values[name]?.[0] || "";
+  }
+  getPropertyPriority(name) {
+    return this.values[name]?.[1] || "";
+  }
+  [Symbol.iterator]() {
+    return this.names[Symbol.iterator]();
+  }
+}
+const emptyStyleSnapshot = new StyleSnapshot();
+const tokenSnapshots = new Map();
+function snapshotTokens(value) {
+  if (!tokenSnapshots.has(value)) {
+    if (tokenSnapshots.size >= 512) tokenSnapshots.delete(tokenSnapshots.keys().next().value);
+    tokenSnapshots.set(value, new TokenSnapshot(value.split(/\s+/).filter(Boolean)));
+  }
+  return tokenSnapshots.get(value);
+}
+class AttributeSnapshot {
+  constructor(source) {
+    this.nodeType = source.nodeType;
+    this.nodeName = source.nodeName;
+    if (source.nodeType !== 1) return;
+    this.tagName = source.tagName;
+    this.id = source.id || "";
+    this.dataset = { ...source.dataset };
+    this.attributes = Array.from(source.attributes || [], ({ name, value }) => ({ name, value }));
+    this.values = Object.create(null);
+    this.attributes.forEach(({ name, value }) => {
+      this.values[name] = value;
+    });
+    this.classList = snapshotTokens(this.values.class || "");
+    this.style = source.style?.length ? new StyleSnapshot(source.style) : emptyStyleSnapshot;
+  }
+  getAttribute(name) {
+    return Object.prototype.hasOwnProperty.call(this.values, name) ? this.values[name] : null;
+  }
+  hasAttribute(name) {
+    return Object.prototype.hasOwnProperty.call(this.values, name);
+  }
+}
+
 function snapshot(source) {
-  // Keep detached lazy images out of the live document's native observer.
-  return {
-    node: getInertDocument(source.ownerDocument).importNode(source, false),
-    markup: signature(source)
-  };
+  // Plain attribute state avoids retaining a second native DOM node per live node.
+  return { node: new AttributeSnapshot(source), markup: signature(source) };
+}
+
+const VIRTUAL_CONTENT = "__nuvioVirtualHomeContent";
+
+export function virtualizeHomeCard(node) {
+  const previous = sourceByNode.get(node);
+  if (
+    !previous?.markup ||
+    node.classList.contains("focused") ||
+    node.querySelector("iframe, video")
+  )
+    return false;
+  if (Object.prototype.hasOwnProperty.call(node, VIRTUAL_CONTENT)) return false;
+  // Find the outer tag boundary without parsing a second native card tree.
+  let quote = "";
+  let start = -1;
+  for (let i = 0; i < previous.markup.length; i++) {
+    const char = previous.markup[i];
+    if (quote) {
+      if (char === quote) quote = "";
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === ">") {
+      start = i + 1;
+      break;
+    }
+  }
+  const end = previous.markup.lastIndexOf("</");
+  if (start < 0 || end < start) return false;
+  node[VIRTUAL_CONTENT] = previous.markup.slice(start, end);
+  releasePosters(node);
+  node.textContent = "";
+  return true;
+}
+
+export function materializeHomeCard(node) {
+  if (!Object.prototype.hasOwnProperty.call(node, VIRTUAL_CONTENT)) return false;
+  const markup = node[VIRTUAL_CONTENT];
+  delete node[VIRTUAL_CONTENT];
+  node.innerHTML = markup;
+  // The shell keeps its original snapshot; new descendants are generated source.
+  children(node).forEach((child) => remember(child, child));
+  return true;
 }
 
 function remember(node, source) {
   sourceByNode.set(node, snapshot(source));
   const liveChildren = children(node);
-  children(source).forEach((child, index) => remember(liveChildren[index], child));
+  const sourceChildren = source === node ? liveChildren : children(source);
+  sourceChildren.forEach((child, index) => remember(liveChildren[index], child));
 }
 
 export function registerHomeDomNodes(nodes) {
@@ -157,6 +264,11 @@ function updateNode(node, source, protectedNode) {
   if (markup !== undefined && previous.markup === markup) return;
   if (node.nodeType === 1) {
     updateAttributes(node, previous.node, source);
+    if (Object.prototype.hasOwnProperty.call(node, VIRTUAL_CONTENT)) {
+      node[VIRTUAL_CONTENT] = source.innerHTML;
+      sourceByNode.set(node, snapshot(source));
+      return;
+    }
     updateChildren(node, source, protectedNode);
   } else {
     node.textContent = source.textContent;
@@ -243,8 +355,12 @@ export function updateHomeDom(container, markup, { incremental = false, focusedN
     updateChildren(container, source, focusedNode);
   } else {
     releasePosters(container);
-    container.innerHTML = markup;
-    remember(container, source);
+    // Parse once in the inert document, then adopt that same tree. Attributes
+    // are plain snapshots, so no parallel native DOM tree needs to be retained.
+    remember(source, source);
+    sourceByNode.set(container, snapshot(source));
+    container.textContent = "";
+    while (source.firstChild) container.appendChild(source.firstChild);
   }
   mountedShells.set(container, container.querySelector(".home-shell"));
   return Boolean(canUpdate);

@@ -4,6 +4,18 @@ export function createHomeScreenMethods13() {
   const { metaRepository, isCollectionFolderItem, resolveTrailerSource, withTimeout, resolveTrailerMetaWithTmdbFallback } = internals;
 
   return {
+    getExpandedHomePosters() {
+      if (!this.homeExpandedPosters) {
+        this.homeExpandedPosters = new Set(
+          this.container?.querySelectorAll(".home-main .home-poster-card.is-expanded, .home-main .home-poster-card.is-trailer-active") || []
+        );
+      }
+      this.homeExpandedPosters.forEach((card) => {
+        if (card.isConnected === false || (!card.classList.contains("is-expanded") && !card.classList.contains("is-trailer-active")))
+          this.homeExpandedPosters.delete(card);
+      });
+      return this.homeExpandedPosters;
+    },
     mountTrailerLayer(container, source, onReady = null) {
       if (!container || !source) {
         return;
@@ -18,6 +30,7 @@ export function createHomeScreenMethods13() {
       if (source.kind === "youtube" && source.embedUrl) {
         const existingFrame = container.querySelector("iframe");
         if (existingFrame?.dataset?.trailerSrc === source.embedUrl) {
+          this.registerHomeMediaLayer?.(container);
           // Same trailer already mounted: reveal it instead of clearing and
           // rebuilding the YouTube iframe, whose teardown is expensive on TV.
           try {
@@ -37,6 +50,7 @@ export function createHomeScreenMethods13() {
         }
       }
       this.clearTrailerLayer(container);
+      this.registerHomeMediaLayer?.(container);
       if (source.kind === "youtube" && source.embedUrl) {
         const frame = document.createElement("iframe");
         frame.className = "home-inline-trailer-frame";
@@ -208,16 +222,15 @@ export function createHomeScreenMethods13() {
     collapseFocusedPoster(node = this.expandedPosterNode, options = {}) {
       // Avoid overlapping flex-size transitions that leave stale poster layers on
       // constrained TV generations and low-end devices.
-      const instant = Boolean(options?.instant || this.isPerformanceConstrained());
+      // Constrained CSS already disables these transitions; do not force a synchronous layout.
+      const instant = Boolean(options?.instant) && !this.isPerformanceConstrained();
       const preserveHeroMedia = Boolean(options?.preserveHeroMedia);
       const excludeNode = options?.excludeNode instanceof HTMLElement ? options.excludeNode : null;
       const targets = new Set();
       if (node instanceof HTMLElement && node !== excludeNode) {
         targets.add(node);
       }
-      Array.from(
-        this.container?.querySelectorAll(".home-main .home-poster-card.is-expanded, .home-main .home-poster-card.is-trailer-active") || []
-      ).forEach((card) => {
+      Array.from(this.getExpandedHomePosters()).forEach((card) => {
         if (card !== excludeNode) {
           targets.add(card);
         }
@@ -233,6 +246,7 @@ export function createHomeScreenMethods13() {
           frame.style.setProperty("transition", "none", "important");
         }
         target.classList.remove("is-expanded", "is-trailer-active", "is-expanded-backdrop-ready");
+        this.homeExpandedPosters?.delete(target);
         const trailerLayer = target.querySelector(".home-poster-trailer-layer");
         // Tearing down a YouTube frame blocks the main thread for ~0.4s on TVs;
         // pause and hide now, destroy after the collapse/sidebar animation.
@@ -263,13 +277,12 @@ export function createHomeScreenMethods13() {
       if (!this.isModernPosterNode(node)) {
         return;
       }
-      const hasOtherExpandedPosters = Array.from(
-        this.container?.querySelectorAll(".home-main .home-poster-card.is-expanded, .home-main .home-poster-card.is-trailer-active") || []
-      ).some((card) => card !== node);
+      const hasOtherExpandedPosters = Array.from(this.getExpandedHomePosters()).some((card) => card !== node);
       if ((this.expandedPosterNode && this.expandedPosterNode !== node) || hasOtherExpandedPosters) {
         this.collapseFocusedPoster(this.expandedPosterNode, { excludeNode: node });
       }
       node.classList.add("is-expanded");
+      this.getExpandedHomePosters().add(node);
       this.hydrateFocusedPosterAssets(node);
       this.expandedPosterNode = node;
       requestAnimationFrame(() => {

@@ -5,13 +5,14 @@ import { installWebOsImgurImageFallback } from "./core/media/imageProxy.js";
 import { startTvArtworkLazyLoader } from "./ui/images/tvArtworkLazyLoader.js";
 import { installFrameBudgetSampler } from "./core/diagnostics/frameBudget.js";
 import { AmbientMode } from "./ui/ambient/ambientMode.js";
-/* global __NUVIO_APP_VERSION__ */
+/* global __NUVIO_APP_VERSION__, __NUVIO_Q70T_BUILD__ */
 
 import "./core/diagnostics/consoleDebugBuffer.js";
 import { markBootTiming } from "./core/diagnostics/bootTiming.js";
 import { detailWatchedEnrichmentService } from "./data/repository/detailWatchedEnrichmentService.js";
 import { NON_BACKSTACK_ROUTES, Router } from "./ui/navigation/router.js";
 import { FocusEngine } from "./ui/navigation/focusEngine.js";
+import { installExitConfirmation } from "./ui/components/exitConfirmation.js";
 import { PlayerController } from "./core/player/playerController.js";
 import { AuthManager } from "./core/auth/authManager.js";
 import { AuthState } from "./core/auth/authState.js";
@@ -27,6 +28,7 @@ import { renderAddonRemotePage } from "./bootstrap/renderAddonRemotePage.js";
 import { preloadStreamBadgeImages } from "./ui/screens/stream/streamScreen.js";
 import { warmStreamingLibs } from "./runtime/loadStreamingLibs.js";
 import { runAfterFirstHomePaint } from "./runtime/startupScheduler.js";
+import { HomeCatalogSnapshotStore } from "./data/local/homeCatalogSnapshotStore.js";
 import { Platform } from "./platform/index.js";
 import { TizenCapabilities } from "./platform/tizen/tizenCapabilities.js";
 import { PluginServiceClient } from "./platform/pluginServiceClient.js";
@@ -104,7 +106,12 @@ function loadRemoteStylesheet(href) {
 }
 
 const materialIconsStylesheetLoaded = loadRemoteStylesheet(REMOTE_FONT_STYLESHEETS.icons);
-void loadRemoteStylesheet(REMOTE_FONT_STYLESHEETS.text);
+const isQ70tBuild = typeof __NUVIO_Q70T_BUILD__ !== "undefined" && __NUVIO_Q70T_BUILD__;
+if (isQ70tBuild) {
+  document.documentElement.classList.add("q70t-local-fonts");
+} else {
+  void loadRemoteStylesheet(REMOTE_FONT_STYLESHEETS.text);
+}
 
 const GUEST_QR_BYPASS_KEY = "skipAuthQrGate";
 const SIGNED_OUT_ALLOWED_ROUTES = new Set([
@@ -327,7 +334,7 @@ function isAddonRemoteMode() {
 // lock state says the active profile has no PIN. The RPC otherwise runs with
 // the 60 s default request timeout, so a slow TV network held the whole start
 // on it even for a single PIN-less profile.
-const PROFILE_LOCK_STATE_WAIT_MS = 2500;
+const PROFILE_LOCK_STATE_WAIT_MS = 300;
 
 function hasProfilePin(pinStates, profileId) {
   return Boolean(pinStates?.[String(profileId)] || pinStates?.[Number(profileId)]);
@@ -769,6 +776,8 @@ async function bootstrapApp() {
   watchTvFramePace();
   startTvArtworkLazyLoader();
   installFrameBudgetSampler();
+  // Start the IndexedDB open early; the profile-scoped cache read stays in Home.
+  void HomeCatalogSnapshotStore.warmup();
   markBootStage("Loading language resources");
   await I18n.init();
 
@@ -782,6 +791,7 @@ async function bootstrapApp() {
   MediaServerSyncService.start();
   AmbientMode.start();
   FocusEngine.init();
+  installExitConfirmation();
   setupProviderCredentialForegroundLifecycle();
   setupTizenPlaybackLifecycle();
   setupTizenAppControlLifecycle();

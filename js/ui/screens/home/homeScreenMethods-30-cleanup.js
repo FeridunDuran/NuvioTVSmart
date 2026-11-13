@@ -6,6 +6,8 @@ export function createHomeScreenMethods30() {
 
   return {
     cleanup() {
+      this.homeFrameNavigation?.cancel();
+      this.homeFrameNavigation = null;
       this.homeRowWindow?.destroy();
       this.homeRowWindow = null;
       this.homeRowWindowRoot = null;
@@ -58,6 +60,8 @@ export function createHomeScreenMethods30() {
       this.clearFocusedPosterFlowState();
       this.collapseFocusedPoster();
       this.clearHomeTrailerLayers();
+      this.homeMediaLayers = null;
+      this.homeExpandedPosters = null;
       this.teardownGridStickyHeader();
       this.teardownModernTrackScrollPagination();
       this.teardownContinueWatchingProgressiveRendering();

@@ -2,8 +2,15 @@
 import * as internals from "./router.js";
 
 export function createRouterMethods01() {
-  const { Platform, RouteStateStore, NON_BACKSTACK_ROUTES, getStackEntryRoute, getStackEntryParams, resolvePendingHistoryReturnParams } =
-    internals;
+  const {
+    Platform,
+    TIZEN_ROUTE_RETURN_BACK_GUARD_MS,
+    RouteStateStore,
+    NON_BACKSTACK_ROUTES,
+    getStackEntryRoute,
+    getStackEntryParams,
+    resolvePendingHistoryReturnParams
+  } = internals;
 
   return {
     getRouteStateKey(routeName, params = {}) {
@@ -316,7 +323,7 @@ export function createRouterMethods01() {
       const navigationId = this.routeReturnBackGuardNavigationId;
       const shouldGuard = Platform.isTizen() && Boolean(isBackNavigation);
       this.routeReturnBackGuardActive = shouldGuard;
-      this.routeReturnBackGuardUntil = shouldGuard ? Number.POSITIVE_INFINITY : 0;
+      this.routeReturnBackGuardUntil = shouldGuard ? Date.now() + TIZEN_ROUTE_RETURN_BACK_GUARD_MS : 0;
       return navigationId;
     }
   };

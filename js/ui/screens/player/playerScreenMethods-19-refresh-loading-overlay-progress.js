@@ -21,14 +21,15 @@ export function createPlayerScreenMethods19() {
       if (this.isStartupErrorVisible()) {
         return;
       }
-      if (this.loadingProgressRefreshInFlight) {
+      const inFlight = this.loadingProgressRefreshInFlight;
+      if (inFlight && inFlight.stream === this.currentEngineFsStream && inFlight.uiRefs === this.uiRefs) {
         return;
       }
-      const canShowLoadingProgress = Boolean(
+      let canShowLoadingProgress = Boolean(
         this.loadingVisible && this.currentEngineFsStream && !this.hasPresentedPlaybackFrame && !this.isExternalFrameMode()
       );
-      const canShowTorrentOverlay = Boolean(
-        this.currentEngineFsStream && !this.isExternalFrameMode() && !TorrentSettingsStore.get().hideTorrentStats
+      let canShowTorrentOverlay = Boolean(
+        this.controlsVisible && this.currentEngineFsStream && !this.isExternalFrameMode() && !TorrentSettingsStore.get().hideTorrentStats
       );
       if (!canShowLoadingProgress && !canShowTorrentOverlay) {
         if (this.loadingProgress != null) {
@@ -48,9 +49,30 @@ export function createPlayerScreenMethods19() {
         return;
       }
 
-      this.loadingProgressRefreshInFlight = true;
+      const stream = this.currentEngineFsStream;
+      const uiRefs = this.uiRefs;
+      const now = Date.now();
+      const lastPoll = this.loadingProgressLastPoll;
+      // UI events can run at 4 Hz; torrent statistics only need one request per second.
+      // A new source or player mount always gets an immediate first request.
+      if (lastPoll?.stream === stream && lastPoll.uiRefs === uiRefs && now >= lastPoll.at && now - lastPoll.at < 1000) {
+        return;
+      }
+      this.loadingProgressLastPoll = { stream, uiRefs, at: now };
+      const request = { stream, uiRefs };
+      this.loadingProgressRefreshInFlight = request;
       try {
         const stats = await this.fetchCurrentEngineFsStats({ timeoutMs: 1200 });
+        // Async responses belong to the source and mount that requested them.
+        if (this.loadingProgressRefreshInFlight !== request || this.currentEngineFsStream !== stream || this.uiRefs !== uiRefs) {
+          return;
+        }
+        canShowLoadingProgress = Boolean(
+          this.loadingVisible && this.currentEngineFsStream && !this.hasPresentedPlaybackFrame && !this.isExternalFrameMode()
+        );
+        canShowTorrentOverlay = Boolean(
+          this.controlsVisible && this.currentEngineFsStream && !this.isExternalFrameMode() && !TorrentSettingsStore.get().hideTorrentStats
+        );
         if (!this.currentEngineFsStream || this.isExternalFrameMode() || this.isStartupErrorVisible()) {
           if (this.loadingProgress != null) {
             this.loadingProgress = null;
@@ -89,7 +111,9 @@ export function createPlayerScreenMethods19() {
           this.syncTorrentOverlay();
         }
       } finally {
-        this.loadingProgressRefreshInFlight = false;
+        if (this.loadingProgressRefreshInFlight === request) {
+          this.loadingProgressRefreshInFlight = false;
+        }
       }
     },
     bindLoadingLogoFallback() {

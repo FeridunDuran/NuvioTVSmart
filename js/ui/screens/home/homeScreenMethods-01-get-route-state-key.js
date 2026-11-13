@@ -17,6 +17,8 @@ export function createHomeScreenMethods01() {
       return "home";
     },
     captureRouteState() {
+      const snapshot = this.navigationFocusSnapshot;
+      if (snapshot?.node === this.getCurrentFocusedNode() && snapshot.node?.isConnected) return snapshot.state;
       return this.captureCurrentContentFocusState() || this.captureCurrentFocusState();
     },
     captureCurrentFocusState() {
@@ -89,7 +91,9 @@ export function createHomeScreenMethods01() {
       return this.captureFocusStateForNode(focused);
     },
     persistCurrentFocusState() {
-      const currentState = this.captureCurrentFocusState();
+      const snapshot = this.navigationFocusSnapshot;
+      const currentState =
+        snapshot?.node === this.getCurrentFocusedNode() && snapshot.node?.isConnected ? snapshot.state : this.captureCurrentFocusState();
       if (!currentState?.layoutMode) {
         return;
       }
@@ -146,6 +150,7 @@ export function createHomeScreenMethods01() {
         [state.layoutMode]: state
       };
       this.pendingBackFocusState = state;
+      this.navigationFocusSnapshot = { node, state };
       try {
         globalThis.sessionStorage?.setItem?.(HOME_RETURN_FOCUS_STATE_KEY, JSON.stringify(state));
       } catch (_) {}
@@ -183,6 +188,19 @@ export function createHomeScreenMethods01() {
         globalThis.sessionStorage?.removeItem?.(HOME_RETURN_FOCUS_STATE_KEY);
       } catch (_) {}
     },
+    restoreHomeTrackOffsets(trackStates = {}) {
+      const tracks = new Map(this.getNavigationTrackNodes().map((track) => [String(track.dataset.trackRowKey || ""), track]));
+      const changes = Object.entries(trackStates || {})
+        .map(([key, value]) => {
+          const track = tracks.get(String(key));
+          const left = Number(value || 0);
+          return track && Math.abs(track.scrollLeft - left) > 1 ? { track, left } : null;
+        })
+        .filter(Boolean);
+      changes.forEach(({ track, left }) => {
+        track.scrollLeft = left;
+      });
+    },
     applyReturnFocusStateNow(focusState) {
       if (!focusState?.layoutMode || focusState.layoutMode !== this.layoutMode || !this.container) {
         return false;
@@ -193,12 +211,7 @@ export function createHomeScreenMethods01() {
       }
 
       this.prepareHomeRowsForRestore(focusState);
-      Object.entries(focusState.trackStates || {}).forEach(([rowKey, scrollLeft]) => {
-        const track = this.getNavigationTrackNodes().find((node) => String(node.dataset.trackRowKey || "") === String(rowKey || ""));
-        if (track) {
-          track.scrollLeft = Number(scrollLeft || 0);
-        }
-      });
+      this.restoreHomeTrackOffsets(focusState.trackStates);
 
       const nodes = this.getNavigationRowNodes(focusState.rowKey);
       const target = findHomeFocusIdentityMatch(nodes, focusState.itemIdentity) || nodes[focusState.itemIndex] || nodes[0] || null;

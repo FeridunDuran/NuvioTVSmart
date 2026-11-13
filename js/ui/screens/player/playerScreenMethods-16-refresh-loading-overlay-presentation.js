@@ -146,7 +146,7 @@ export function createPlayerScreenMethods16() {
       const speedNode = this.uiRefs?.torrentOverlaySpeed;
       const detailNode = this.uiRefs?.torrentOverlayDetail;
       const data = this.torrentOverlayData;
-      const visible = Boolean(data);
+      const visible = Boolean(data) && Boolean(this.controlsVisible) && !TorrentSettingsStore.get().hideTorrentStats;
       if (overlay) {
         overlay.classList.toggle("hidden", !visible);
         overlay.setAttribute("aria-hidden", visible ? "false" : "true");

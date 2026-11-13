@@ -126,15 +126,15 @@ export function createStreamScreenMethods03() {
 
       const showAddonLogo = StreamBadgeSettingsStore.snapshot().showAddonLogo === true;
       if (restored && this.streams.length && showAddonLogo) {
-        await ensureAddonLogoImageProxyReady();
-        if (token !== this.loadToken || Router.getCurrent() !== "stream") {
-          return;
-        }
-        this.streams = this.applyAddonLogos(this.streams);
-        await preloadAddonLogoImages(this.streams, this.addonLogoLookup);
-        if (token !== this.loadToken || Router.getCurrent() !== "stream") {
-          return;
-        }
+        // Optional logos must not delay the restored source list or its Back key.
+        void (async () => {
+          await ensureAddonLogoImageProxyReady();
+          if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
+          this.streams = this.applyAddonLogos(this.streams);
+          await preloadAddonLogoImages(this.streams, this.addonLogoLookup);
+          if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
+          this.requestRender({ delayMs: 0 });
+        })().catch((error) => console.warn("Stream logo background load failed", error));
       }
 
       // A restored snapshot already holds visible stream results, so settle

@@ -60,6 +60,11 @@ async function setup() {
       {
         name: "fixtures",
         setup(b) {
+          b.onLoad({ filter: /tmdbNegativeCache\.js$/ }, () => ({
+            contents:
+              "export const isTmdbHostBackedOff = () => false; export const isTmdbRequestBlocked = () => false; export const noteTmdbRequestResult = () => {};",
+            loader: "js"
+          }));
           b.onLoad({ filter: /detailEpisodeShuffle\.js$/ }, () => ({
             contents:
               "export const detailShuffleSettings = () => ({}); export const selectDetailShuffle = () => null; export const detailShuffleResume = () => null;",
@@ -67,7 +72,8 @@ async function setup() {
           }));
           b.onLoad(
             {
-              filter: /(?:config|tmdbSettingsStore|pluginServiceClient)\.js$|platform\/index\.js$/
+              filter:
+                /(?:config|tmdbSettingsStore|pluginServiceClient)\.js$|platform[\\/]index\.js$/
             },
             ({ path }) => {
               const contents = path.endsWith("config.js")
@@ -96,7 +102,9 @@ async function setup() {
   });
   const context = vm.createContext({
     fixtures,
-    document: { getElementById: () => ({ querySelector: () => null }) },
+    document: {
+      getElementById: () => ({ querySelector: () => null, setAttribute() {}, removeAttribute() {} })
+    },
     URL,
     AbortController,
     console: { warn: (...args) => warnings.push(args) },
@@ -271,7 +279,7 @@ test("metadata uses packaged webOS transport with direct fallback; Tizen/browser
   assert.equal(api.timers.size, 0);
 });
 
-test("season failures are isolated and concurrency is limited to four like Android", async () => {
+test("season failures are isolated and concurrency remains bounded", async () => {
   const { TmdbMetadataService, fixtures, warnings } = await setup();
   let active = 0,
     peak = 0;
@@ -409,7 +417,10 @@ async function loadScreen(
     videos: api.fixtures.videos || []
   };
   Object.assign(api.fixtures, {
-    metaRepository: { getMetaFromAllAddons: async () => ({ status: "success", data: meta }) },
+    metaRepository: {
+      getCachedMeta: () => null,
+      getMetaFromAllAddons: async () => ({ status: "success", data: meta })
+    },
     savedLibraryRepository: { isSaved: async () => false },
     watchProgressRepository: { getResumeByContentId: async () => null },
     watchedItemsRepository: { isWatched: async () => false, getAll: async () => [] },
@@ -467,7 +478,7 @@ test("late enrichment updates the already-rendered page, but cannot update a dif
     const api = await setup(),
       enrichment = deferred();
     const screen = await loadScreen(api, enrichment);
-    assert.equal(screen.initial.name, "Original");
+    assert.equal(screen.meta.name, "Original");
     api.advance(15_000);
     await flush();
     assert.equal(screen.meta.name, "Original");
@@ -543,7 +554,7 @@ test("ratings start and finish while remote progress remains pending; stale meta
     await flush();
     assert.equal(ratingsLoaded, !stale);
     assert.equal(episodeRatingsLoaded, !stale);
-    assert.equal(screen.initial, undefined, "remote progress is still pending");
+    assert.ok(screen.initial, "metadata paints while remote progress is pending");
     progress.resolve([]);
     await loading;
   }
@@ -615,7 +626,11 @@ test("Continue Watching Back resumes interrupted enrichment and preserves the de
               api.createMetaDetailsScreenMethods05().maybeAutoOpenContinueWatchingStream,
             findContinueWatchingEpisodeTarget:
               api.createMetaDetailsScreenMethods05().findContinueWatchingEpisodeTarget,
-            container: { querySelector: () => ({ scrollTop: 120 }) },
+            container: {
+              querySelector: () => ({ scrollTop: 120 }),
+              setAttribute() {},
+              removeAttribute() {}
+            },
             captureDetailFocus: () => ({ rail: "cast", index: 2 }),
             stopTrailerPlayback() {},
             cancelTraktCommentsRequest() {},
@@ -642,7 +657,7 @@ test("Continue Watching Back resumes interrupted enrichment and preserves the de
     snapshot.selectedSeason = 3;
     await screen.mount(screen.params, { isBackNavigation: true, restoredState: snapshot });
     assert.equal(enrichmentCalls, 1);
-    assert.equal(screen.initial.name, "Original");
+    assert.equal(screen.meta.name, "Original");
     assert.deepEqual(plain(screen.pendingFocusRestore), { rail: "cast", index: 2 });
     assert.equal(screen.restoredContentScrollTop, 120);
     assert.equal(screen.restoredTrackScrollLeftByKey.cast, 240);

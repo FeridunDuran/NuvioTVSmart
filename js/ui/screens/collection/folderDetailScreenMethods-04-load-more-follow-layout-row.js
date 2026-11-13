@@ -231,19 +231,9 @@ export function createFolderDetailScreenMethods04() {
         videoId: String(isPoster ? "" : item.videoId || ""),
         holdTriggered: false
       };
-      this.pendingContinueWatchingHoldTimer = setTimeout(() => {
-        this.pendingContinueWatchingHoldTimer = null;
-        const pending = this.pendingContinueWatchingHoldTarget;
-        if (!pending || Router.getCurrent() !== "folderDetail") {
-          return;
-        }
-        const current = this.container?.querySelector(".home-continue-card.focusable.focused, .home-poster-card.focusable.focused") || null;
-        if (!this.hasPendingContinueWatchingHold(current)) {
-          return;
-        }
-        pending.holdTriggered = true;
-        this.openHoldMenuForNode(current);
-      }, 650);
+      // Decide on release using the physical key event duration. A delayed
+      // JS timer can run before a queued short keyup and must never open a menu.
+      this.pendingContinueWatchingHoldActive = true;
       return true;
     }
   };

@@ -1,5 +1,9 @@
 import { HomeScreen } from "../screens/home/homeScreen.js";
-import { PlayerScreen } from "../screens/player/playerScreen.js";
+import { createLazyScreen } from "./lazyScreen.js";
+const PlayerScreen = createLazyScreen(
+  () => import("../screens/player/playerScreen.js"),
+  "PlayerScreen"
+);
 import { AccountScreen } from "../screens/account/accountScreen.js";
 import { AuthQrSignInScreen } from "../screens/account/authQrSignInScreen.js";
 import { AuthSignInScreen } from "../screens/account/authSignInScreen.js";

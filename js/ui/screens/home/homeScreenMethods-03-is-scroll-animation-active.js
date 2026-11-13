@@ -77,7 +77,13 @@ export function createHomeScreenMethods03() {
       if (active && active.classList && active.classList.contains("focused") && this.container?.contains(active)) {
         return Boolean(active.closest(".home-sidebar, .modern-sidebar-panel"));
       }
-      return Boolean(this.container?.querySelector(".home-sidebar .focusable.focused, .modern-sidebar-panel .focusable.focused"));
+      const container = this.container;
+      if (!container) return false;
+      let roots = this.sidebarFocusRoots;
+      if (!roots?.length || roots.some((root) => !container.contains(root))) {
+        roots = this.sidebarFocusRoots = Array.from(container.querySelectorAll(".home-sidebar, .modern-sidebar-panel"));
+      }
+      return roots.some((root) => Boolean(root.querySelector(".focusable.focused")));
     },
     getRowFocusInset() {
       if (this.layoutMode === "modern") {
@@ -202,10 +208,8 @@ export function createHomeScreenMethods03() {
       );
     },
     shouldUseImmediateFocusScroll() {
-      // Camera moves snap only on constrained runtimes. Every Samsung set
-      // carries legacy-tizen as a layout fallback, so that class must not
-      // decide motion: a 2022+ Tizen tweens like webOS and Android TV (#1250).
-      return this.isPerformanceConstrained();
+      // This TV build favors immediate remote navigation over camera tweens.
+      return Platform.isTizen() || this.isPerformanceConstrained();
     },
     hasCollectionHomeRows() {
       return Array.isArray(this.collections) && this.collections.length > 0;
@@ -315,6 +319,9 @@ export function createHomeScreenMethods03() {
       return 0;
     },
     getDirectionalRepeatThrottleMs(direction = null) {
+      // First presses are never throttled. Keep held-key input responsive
+      // without accepting multiple focus changes within one TV frame.
+      if (Platform.isTizen()) return direction === "up" || direction === "down" ? 80 : 64;
       // Tizen fast path: the 48ms fast-horizontal gate passes nearly every
       // native hold-repeat (~50-100ms) and queues another full focus workload
       // before the previous press finished layout. Keep it for fast hardware.

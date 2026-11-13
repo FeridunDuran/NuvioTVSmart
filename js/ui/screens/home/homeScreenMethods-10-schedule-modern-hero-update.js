@@ -27,7 +27,11 @@ export function createHomeScreenMethods10() {
       const scheduledHeroIdentity = nextHeroIdentity;
       const now = Date.now();
       const previous = Number(this.lastModernHeroNavAt || 0);
-      const isRapidNav = previous > 0 && now - previous < MODERN_HOME_CONSTANTS.heroRapidNavThresholdMs;
+      const constrained = getTvRuntimePerformanceProfile().isPerformanceConstrained;
+      const rapidThreshold = constrained
+        ? Math.max(300, MODERN_HOME_CONSTANTS.heroRapidNavThresholdMs)
+        : MODERN_HOME_CONSTANTS.heroRapidNavThresholdMs;
+      const isRapidNav = previous > 0 && now - previous < rapidThreshold;
       const delay = immediate ? 0 : this.getHeroFocusDelay({ rapid: isRapidNav });
       this.lastModernHeroNavAt = now;
       if (isRapidNav || immediate) {
@@ -44,7 +48,7 @@ export function createHomeScreenMethods10() {
         }
         callback();
       };
-      const preloadDelay = Math.max(0, Math.min(120, delay - 80));
+      const preloadDelay = constrained ? Math.max(0, delay - 80) : Math.max(0, Math.min(120, delay - 80));
       this.heroBackdropPreloadTimer = setTimeout(() => {
         this.heroBackdropPreloadTimer = null;
         waitForVerticalSettle(() => {

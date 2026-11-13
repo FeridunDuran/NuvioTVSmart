@@ -265,7 +265,7 @@ export function createMetaDetailsScreenMethods12() {
         title: this.meta?.name || this.params?.fallbackTitle || "Untitled",
         subtitle: t("detail.playOptions", {}, "Play options"),
         widthVw: 37.5,
-        suppressEnterUntilKeyUp: true,
+        suppressEnterUntilKeyUp: false,
         buttons,
         onDismiss: () => {
           this.detailHoldDialog = null;
@@ -288,7 +288,7 @@ export function createMetaDetailsScreenMethods12() {
         subtitle: t("detail_lists_subtitle", {}, "Choose which lists should include this title"),
         error: this.libraryListMenu.error || null,
         widthVw: 52,
-        suppressEnterUntilKeyUp: true,
+        suppressEnterUntilKeyUp: false,
         buttons: this.getLibraryListMenuOptions().map((option) => ({
           label: option.label,
           key: option.action,
@@ -325,9 +325,8 @@ export function createMetaDetailsScreenMethods12() {
       );
     },
     cancelPendingHeroHold() {
-      if (this.pendingHeroHoldTimer) {
-        clearTimeout(this.pendingHeroHoldTimer);
-        this.pendingHeroHoldTimer = null;
+      if (this.pendingHeroHoldActive) {
+        this.pendingHeroHoldActive = null;
       }
       this.pendingHeroHoldTarget = null;
     }

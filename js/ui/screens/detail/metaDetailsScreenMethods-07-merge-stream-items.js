@@ -191,7 +191,7 @@ export function createMetaDetailsScreenMethods07() {
       this._detailInsightMarkup = insightMarkup;
       this._detailCommentsMarkup = commentsMarkup;
       this._detailCompanyMarkup = companyMarkup;
-      this.bindDetailChrome();
+      this.scheduleDetailChromeBinding();
       this.scheduleEpisodeVirtualizationSync(this.getRememberedEpisodeIndex());
     },
     async loadMdbListRatings(meta, token = this.detailLoadToken, prefetchedRatings = null) {

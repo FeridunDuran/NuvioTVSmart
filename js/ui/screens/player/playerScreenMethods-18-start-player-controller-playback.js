@@ -1,3 +1,4 @@
+import { sourceVideoHeight } from "../../../core/player/q70tPlaybackPolicy.js";
 import { saveReusableStreamLink } from "../../../core/streams/streamLinkReuse.js";
 /* eslint-disable no-unused-vars */
 import * as internals from "./playerScreenContext.js";
@@ -37,9 +38,11 @@ export function createPlayerScreenMethods18() {
       const candidateHeaders = this.getCurrentStreamRequestHeaders(sourceCandidate);
       const contextHeaders = context?.requestHeaders && typeof context.requestHeaders === "object" ? context.requestHeaders : {};
       const requestHeaders = { ...candidateHeaders, ...contextHeaders };
+      const candidate = sourceCandidate || this.getCurrentStreamCandidate() || {};
       const playbackContext = {
         ...(context && typeof context === "object" ? context : {}),
-        ...(Object.keys(requestHeaders).length ? { requestHeaders } : {})
+        ...(Object.keys(requestHeaders).length ? { requestHeaders } : {}),
+        sourceVideoHeight: sourceVideoHeight(candidate)
       };
       saveReusableStreamLink(this, sourceCandidate || this.getCurrentStreamCandidate(), { url: playbackUrl, headers: requestHeaders });
       PlayerController.setStartupPresentationAudioMuted?.(true);

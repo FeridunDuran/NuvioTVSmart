@@ -22,6 +22,7 @@ export function createHomeScreenMethods20() {
     getHomeCatalogRowKeys,
     getRenderedHomeCatalogRowKeys,
     sameStringArray,
+    findHomeFocusIdentityMatch,
     readContinueWatchingDisplaySnapshot
   } = internals;
 
@@ -38,6 +39,7 @@ export function createHomeScreenMethods20() {
         ? this.pendingBackFocusState || this.readStoredReturnFocusState()
         : null;
       const returnFocusState = restoredRouteFocusState || storedReturnFocusState;
+      this.navigationFocusSnapshot = null;
       ScreenUtils.show(this.container);
       this.ensureDelegatedEventsBound();
       this.ensureAddonManifestSubscriptions();
@@ -149,31 +151,55 @@ export function createHomeScreenMethods20() {
         if (this.layoutMode === "modern") {
           this.setupModernTrackScrollPagination();
         }
-        const restoredFocus = this.restoreFocusState(returnFocusState);
+        const retainedFocus =
+          !shouldRepaintPreservedHome && returnFocusState?.focusKind !== "sidebar"
+            ? this.container.querySelector(".home-main .focusable.focused")
+            : null;
+        const canKeepFocus = Boolean(
+          retainedFocus && returnFocusState?.itemIdentity && findHomeFocusIdentityMatch([retainedFocus], returnFocusState.itemIdentity)
+        );
+        let restoredFocus = false;
+        if (canKeepFocus) {
+          // Same live card and retained scroll: don't rehydrate rows or rerun
+          // full camera/hero restoration merely to focus it again.
+          this.focusWithoutAutoScroll(retainedFocus, { suppressDelegatedFocus: true });
+          this.setCurrentFocusedNode(retainedFocus);
+          this.lastMainFocus = retainedFocus;
+          const viewport = this.getHomeViewport();
+          const top = Number(returnFocusState.mainScrollTop || 0);
+          if (viewport && Math.abs(viewport.scrollTop - top) > 1) viewport.scrollTop = top;
+          restoredFocus = true;
+        } else restoredFocus = this.restoreFocusState(returnFocusState);
         if (restoredFocus) {
           this.isRestoringFocusFromBack = false;
           this.clearStoredReturnFocusState();
         } else {
           ScreenUtils.setInitialFocus(this.container, this.getInitialFocusSelector());
         }
-        this.syncFocusedCollectionCardState();
-        if (this.layoutMode === "grid") {
-          this.setupGridStickyHeader(Boolean(this.layoutPrefs?.heroSectionEnabled) && Boolean(this.heroItem));
-        }
-        this.startHeroRotation();
         this.homeRouteEnterPending = false;
         this.pendingCollectionRouteReturnAnimation = false;
-        this.ensureHomeTruncationObservers();
-        this.scheduleHomeTruncationUpdate();
-        this.scheduleHomeLazyImageHydration();
-        this.scheduleReturnFocusRestore();
-        this.ensureStartupSyncSubscription();
-        this.refreshHomeAfterRouteReturn({
-          preserveReturnState: true,
-          reason: "route-resume"
-        }).catch((error) => {
-          console.warn("Home background refresh failed", error);
-        });
+        const resumeToken = this.homeLoadToken;
+        requestAnimationFrame(() =>
+          setTimeout(() => {
+            if (resumeToken !== this.homeLoadToken || Router.getCurrent() !== "home") return;
+            this.syncFocusedCollectionCardState();
+            if (this.layoutMode === "grid") {
+              this.setupGridStickyHeader(Boolean(this.layoutPrefs?.heroSectionEnabled) && Boolean(this.heroItem));
+            }
+            this.startHeroRotation();
+            this.ensureHomeTruncationObservers();
+            this.scheduleHomeTruncationUpdate();
+            this.scheduleHomeLazyImageHydration();
+            this.scheduleReturnFocusRestore();
+            this.ensureStartupSyncSubscription();
+            this.refreshHomeAfterRouteReturn({
+              preserveReturnState: true,
+              reason: "route-resume"
+            }).catch((error) => {
+              console.warn("Home background refresh failed", error);
+            });
+          }, 0)
+        );
         logHomePerf("mount", {
           ms: Number((homePerfNow() - mountStart).toFixed(2)),
           route: "home",

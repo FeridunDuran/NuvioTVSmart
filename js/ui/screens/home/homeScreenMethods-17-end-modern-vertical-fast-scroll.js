@@ -141,6 +141,15 @@ export function createHomeScreenMethods17() {
         if (this._mainVertRaf) {
           cancelAnimationFrame(this._mainVertRaf);
         }
+        this._mainVertRaf = null;
+        if (this.shouldUseImmediateFocusScroll()) {
+          const next = this.getModernMainAlignedScrollTarget(target, direction, current, layoutAdjustment);
+          if (next?.container && Math.abs(Number(next.container.scrollTop || 0) - Number(next.value || 0)) > 1) {
+            this.cancelScrollAnimation(next.container, "y");
+            next.container.scrollTop = Math.round(Number(next.value || 0));
+          }
+          return;
+        }
         const _target = target;
         const _direction = direction;
         const _current = current;
@@ -169,6 +178,14 @@ export function createHomeScreenMethods17() {
         return;
       }
 
+      if (this.shouldUseImmediateFocusScroll()) {
+        if (this._mainClassicVertRaf) {
+          cancelAnimationFrame(this._mainClassicVertRaf);
+          this._mainClassicVertRaf = null;
+        }
+        this.applyClassicMainVerticalVisibility(target, direction, current, layoutAdjustment);
+        return;
+      }
       if ((direction === "up" || direction === "down") && this.isPerformanceConstrained()) {
         if (this._mainClassicVertRaf) {
           cancelAnimationFrame(this._mainClassicVertRaf);

@@ -179,13 +179,16 @@ export function createSearchScreenMethods02() {
         }
       };
 
+      const rowCache = new Map();
       const buildRows = () =>
         responses
-          .filter(({ result } = {}) => result?.status === "success" && result?.data?.items?.length)
-          .map(({ catalog, result }) => {
+          .map((entry, catalogIndex) => {
+            if (!entry || entry.result?.status !== "success" || !entry.result?.data?.items?.length) return null;
+            if (rowCache.has(entry)) return rowCache.get(entry);
+            const { catalog, result } = entry;
             const rawItems = result?.data?.items || [];
             const items = this.layoutPrefs?.hideUnreleasedContent ? filterReleasedItems(rawItems) : rawItems;
-            return {
+            const row = {
               title: formatCatalogRowTitle(
                 catalog.catalogName,
                 catalog.addonName,
@@ -207,20 +210,35 @@ export function createSearchScreenMethods02() {
               skipStep: Number(catalog.skipStep || result?.data?.skipStep || 100),
               items: items.slice(0, itemLimit)
             };
+            // Arrival order changes visible indices; the original catalog index
+            // keeps focus and horizontal scroll attached to the same catalog.
+            row.stateKey = buildRowStateKey(row, catalogIndex);
+            rowCache.set(entry, row);
+            return row;
           })
-          .filter((row) => row.items.length);
+          .filter((row) => row?.items.length);
 
       // Personal build: publish progressively. Upstream showed the first catalog that
       // answered and then nothing until every catalog had finished or timed out, so most
-      // results arrived in one late batch. Later rows are published at most every 700 ms.
+      // results arrived in one late batch. Later rows are published at most every 400 ms.
       let lastPublishedRowCount = 0;
       let lastPublishAt = 0;
+      let trailingPublishTimer = null;
       const publishFirstResults = () => {
         if (token !== this.loadToken || typeof onFirstResults !== "function") {
           return;
         }
         const now = Date.now();
-        if (publishedFirstResults && now - lastPublishAt < 700) {
+        const waitMs = publishedFirstResults ? 400 - (now - lastPublishAt) : 0;
+        if (waitMs > 0) {
+          // Throttled: publish when the window ends instead of waiting for the next catalog
+          // to answer (a failing add-on would otherwise hold these rows until its timeout).
+          if (!trailingPublishTimer) {
+            trailingPublishTimer = setTimeout(() => {
+              trailingPublishTimer = null;
+              publishFirstResults();
+            }, waitMs);
+          }
           return;
         }
         const rows = buildRows();
@@ -241,12 +259,19 @@ export function createSearchScreenMethods02() {
         }
       };
       const workerCount = Math.min(batchSize > 0 ? batchSize : searchableCatalogs.length, searchableCatalogs.length);
-      await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+      try {
+        await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+      } finally {
+        if (trailingPublishTimer) {
+          clearTimeout(trailingPublishTimer);
+          trailingPublishTimer = null;
+        }
+      }
 
       return buildRows();
     },
-    renderRows() {
-      if (!Array.isArray(this.rows) || !this.rows.length) {
+    renderRows(rows = this.rows, rowIndexOffset = 0) {
+      if (!Array.isArray(rows) || !rows.length) {
         if (this.mode === "search") {
           return `
               <div class="search-empty-state search-empty-state-results">
@@ -272,8 +297,9 @@ export function createSearchScreenMethods02() {
           `;
       }
 
-      return this.rows
-        .map((row, rowIndex) => {
+      return rows
+        .map((row, index) => {
+          const rowIndex = index + rowIndexOffset;
           const rowKey = row.stateKey || buildRowStateKey(row, rowIndex);
           const seeAllLabel = t("action_see_all", {}, "See All");
           const seeAllArrowClass = I18n.isRtl() ? " is-rtl" : "";

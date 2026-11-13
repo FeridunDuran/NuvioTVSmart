@@ -142,8 +142,8 @@ export function createDiscoverScreenMethods02() {
       this.pendingRestoreFocus = Boolean(restoreFocusToGrid);
       this.preserveViewportOnNextRender = Boolean(preserveViewport && addedCount > 0);
       this.suppressInitialLoadingRenders = false;
-      void this.refreshWatchedTitleIds(this.items).then(() => {
-        if (token === this.loadToken && Router.getCurrent() === "discover") {
+      void this.refreshWatchedTitleIds(this.items).then((changed) => {
+        if (changed && token === this.loadToken && Router.getCurrent() === "discover") {
           this.requestRender();
         }
       });

@@ -167,3 +167,21 @@ test("a trailer that has not shown a frame is dropped when focus moves, on any T
 
   assert.deepEqual(cleared, [booting]);
 });
+
+test("empty trailer registries scan once and do no full-DOM work on later navigation", () => {
+  const context = buildContext();
+  const screen = makeScreen(context);
+  let scans = 0;
+  screen.container = {
+    querySelectorAll() {
+      scans++;
+      return [];
+    }
+  };
+  screen.shouldUseImmediateFocusScroll = () => true;
+  for (let i = 0; i < 50; i++) {
+    screen.refreshPendingHomeTrailerCleanup();
+    screen.pauseActiveTrailerLayersForNavigation();
+  }
+  assert.equal(scans, 1);
+});

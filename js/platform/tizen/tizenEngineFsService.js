@@ -1,5 +1,6 @@
 import { Platform } from "../index.js";
 import { TizenCapabilities } from "./tizenCapabilities.js";
+import { getWrtServiceClass, startWithWrtServiceClass } from "./tizenWrtService.js";
 
 const LOCAL_BASE_URLS = ["http://127.0.0.1:2710", "http://localhost:2710"];
 
@@ -113,6 +114,11 @@ async function startViaWrtService(serviceId) {
     globalThis.wrt?.service ||
     globalThis.webapis?.wrt?.service ||
     globalThis.webapis?.service;
+  const Service = getWrtServiceClass(wrtBridge);
+  if ((!wrtService || typeof wrtService.startService !== "function") && Service) {
+    diagnostic("wrt Service.start call", { serviceId });
+    return startWithWrtServiceClass(Service, serviceId);
+  }
   if (!wrtService) {
     diagnostic("wrt service API unavailable", { serviceId });
     throw new Error("wrt service API unavailable");
@@ -155,9 +161,10 @@ async function startViaTizenApplication(serviceId) {
   return invokeCallbackApi(application.launch.bind(application), [serviceId]);
 }
 
-async function requestServiceStart(serviceId) {
+async function requestServiceStart(serviceId, triedMethods = new Set()) {
   const errors = [];
-  const legacyServiceFirst = TizenCapabilities.get().webServiceSupported === false;
+  const legacyServiceFirst =
+    TizenCapabilities.get().webServiceSupported === false || Boolean(getWrtServiceClass());
   const officialAttempts = [
     {
       method: "tizen-application-control-default",
@@ -174,11 +181,19 @@ async function requestServiceStart(serviceId) {
   ];
   // Samsung warns that application-control launches can disturb the
   // foreground app when web.service is reported as unavailable. Preserve the
-  // legacy path that worked on older firmware first and only use the official
-  // application-control path when the capability is true or unknown.
-  const attempts = legacyServiceFirst
-    ? officialAttempts.slice(2).concat(officialAttempts.slice(1, 2))
-    : officialAttempts;
+  // legacy path first; application-control is the final fallback on these TVs.
+  // Personal build: on a Q70T (Tizen 5.5, web.service=false) the legacy WRT call returns
+  // without starting anything, and the application-control launch, which does start the
+  // service there, was never tried. It is now the last resort, and launchers that were
+  // acknowledged without the service coming up are skipped on the next round.
+  const attempts = (
+    legacyServiceFirst
+      ? officialAttempts.slice(2).concat(officialAttempts.slice(1, 2), officialAttempts.slice(0, 1))
+      : officialAttempts
+  ).filter((attempt) => !triedMethods.has(attempt.method));
+  if (!attempts.length) {
+    throw new Error("No Tizen service launcher left to try");
+  }
   diagnostic("launcher attempts selected", {
     serviceId,
     webServiceSupported: TizenCapabilities.get().webServiceSupported,
@@ -186,6 +201,7 @@ async function requestServiceStart(serviceId) {
   });
 
   for (const attempt of attempts) {
+    triedMethods.add(attempt.method);
     diagnostic("launcher attempt begin", { serviceId, method: attempt.method });
     try {
       const startResult = await withTimeout(
@@ -315,7 +331,7 @@ export const TizenEngineFsService = {
     // Samsung firmware may report web.service=false even when a packaged
     // EngineFS service can still be started through the legacy service API.
     // Only callers with an explicit local-service contract may use that path;
-    // generic and subtitle callers retain the capability gate.
+    // generic callers retain the capability gate.
     if (
       !capabilities.engineFsServicePackaged ||
       (!PURPOSES_ALLOWING_LEGACY_SERVICE.has(purpose) && !capabilities.supportsWebService)
@@ -363,13 +379,35 @@ export const TizenEngineFsService = {
           throw new Error("Tizen EngineFS service id is unavailable");
         }
         diagnostic("service start requested", { serviceId });
-        const startResult = await requestServiceStart(serviceId);
-        diagnostic("explicit startup acknowledged", {
-          purpose,
-          serviceId,
-          method: startResult.method
-        });
-        const reachable = await waitForLocalBaseUrl();
+        // An acknowledged launcher is not proof the service runs: verify it answers and
+        // otherwise move on to the next launcher.
+        const triedMethods = new Set();
+        let startResult = null;
+        let reachable = null;
+        let lastError = null;
+        while (!reachable) {
+          try {
+            startResult = await requestServiceStart(serviceId, triedMethods);
+          } catch (error) {
+            throw lastError || error;
+          }
+          diagnostic("explicit startup acknowledged", {
+            purpose,
+            serviceId,
+            method: startResult.method
+          });
+          try {
+            reachable = await waitForLocalBaseUrl(9000);
+          } catch (error) {
+            lastError = error;
+            diagnostic("explicit startup health failed", {
+              purpose,
+              serviceId,
+              method: startResult.method,
+              error: diagnosticError(error)
+            });
+          }
+        }
         diagnostic("explicit startup health success", {
           purpose,
           serviceId,

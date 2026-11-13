@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { preferQ70tAvplay } from "../js/core/player/q70tPlaybackPolicy.js";
 
 function createController() {
   const context = vm.createContext({
     URL,
+    preferQ70tAvplay,
     internals: { Platform: { isTizen: () => false } }
   });
   const methods = {};
@@ -20,7 +22,7 @@ function createController() {
     ]
   ]) {
     const source = readFileSync(new URL(`../js/core/player/${file}`, import.meta.url), "utf8")
-      .replace(/^import \* as internals from .*;\r?\n/gm, "")
+      .replace(/^import .*;\r?\n/gm, "")
       .replace(/^export /gm, "");
     Object.assign(methods, vm.runInContext(`${source}\n${factory}()`, context));
   }

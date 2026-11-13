@@ -74,6 +74,9 @@ export function createCatalogSeeAllScreenMethods01() {
       return true;
     },
     async refreshWatchedTitleIds(items = this.items) {
+      const token = this.loadToken;
+      const request = (this.watchedProjectionRequest || 0) + 1;
+      this.watchedProjectionRequest = request;
       const watchedItems = await watchedItemsRepository.getAll(5000).catch(() => []);
       const projectedItems = await watchedTitleStateRepository
         .getTitleWatchedItems(Array.isArray(items) ? items : [], {
@@ -81,7 +84,9 @@ export function createCatalogSeeAllScreenMethods01() {
           limit: 5000
         })
         .catch(() => watchedItems);
+      if (token !== this.loadToken || request !== this.watchedProjectionRequest || Router.getCurrent() !== "catalogSeeAll") return false;
       this.watchedTitleIds = buildWatchedTitleIdSet(projectedItems);
+      return true;
     },
     updateRenderedWatchedBadges() {
       const cards = this.container?.querySelectorAll(".seeall-card.focusable") || [];
@@ -131,7 +136,7 @@ export function createCatalogSeeAllScreenMethods01() {
       this.posterOptionsController = null;
       this.posterOptionsFocusKey = "";
       this.pendingPosterHoldTarget = null;
-      this.pendingPosterHoldTimer = null;
+      this.pendingPosterHoldActive = null;
 
       if (navigationContext?.isBackNavigation && this.hydrateFromRouteState(navigationContext?.restoredState || null, params)) {
         this.loading = false;
@@ -149,15 +154,13 @@ export function createCatalogSeeAllScreenMethods01() {
       this.loading = !this.items.length;
       this.render();
       void (async () => {
-        await watchedTitleIdsPromise;
-        if (routeLoadToken !== this.loadToken || Router.getCurrent() !== "catalogSeeAll") {
-          return;
-        }
+        // Start the first provider page before cosmetic watched-state IO.
         if (!this.items.length) {
           this.loading = false;
           await this.loadNextPage();
-          return;
         }
+        await watchedTitleIdsPromise;
+        if (routeLoadToken !== this.loadToken || Router.getCurrent() !== "catalogSeeAll") return;
         // Watched badges are cosmetic. Do not replace a grid that the user has
         // already focused while the local watched snapshot was being read.
         if (!this.container?.querySelector(".seeall-card.focusable.focused")) {

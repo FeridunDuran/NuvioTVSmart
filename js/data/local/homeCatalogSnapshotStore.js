@@ -9,7 +9,7 @@ const DATABASE_VERSION = 1;
 const STORE_NAME = "snapshots";
 // Bump this whenever the compact row shape changes; old records are ignored
 // and deleted on read instead of being interpreted as the new shape.
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
 // Personal build: 7 days instead of 12 hours. Cached rows are only shown until the live
 // catalogs answer, so an older snapshot still beats an empty Home (slow add-on catalogs).
 const SNAPSHOT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -144,13 +144,9 @@ function compactRow(row = {}) {
   }
   const items = cloneJson(result.data.items.slice(0, MAX_ITEMS_PER_ROW));
   if (!Array.isArray(items) || !items.length) return null;
+  const { result: _result, loadingItems: _loadingItems, ...descriptor } = row;
   return {
-    addonId: row.addonId,
-    addonName: row.addonName,
-    addonBaseUrl: row.addonBaseUrl,
-    catalogId: row.catalogId,
-    catalogName: row.catalogName,
-    apiType: row.apiType,
+    ...cloneJson(descriptor),
     result: {
       status: "success",
       data: {
@@ -158,9 +154,7 @@ function compactRow(row = {}) {
         items
       }
     },
-    loadingItems: null,
-    homeCatalogKey: row.homeCatalogKey,
-    homeCatalogDisableKey: row.homeCatalogDisableKey
+    loadingItems: null
   };
 }
 
@@ -215,6 +209,13 @@ async function trimRecords() {
 }
 
 export const HomeCatalogSnapshotStore = {
+  // Open storage while auth/profile routing proceeds, without reading a
+  // profile's content or delaying the first route.
+  warmup() {
+    return openDatabase()
+      .then((database) => Boolean(database))
+      .catch(() => false);
+  },
   async read({ profileId = null, key = null } = {}) {
     const normalizedKey = key || buildHomeCatalogSnapshotKey({ profileId });
     const record = await readRecord(normalizedKey);

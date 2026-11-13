@@ -1,3 +1,4 @@
+import { preferQ70tAvplay } from "./q70tPlaybackPolicy.js";
 import { observeProxyRedirects } from "./proxyRedirectObserver.js";
 import { describeSourceHost, isDirectMediaProbeResponse, resolveTizenDirectRedirect } from "../../platform/tizen/tizenRedirectResolver.js";
 /* eslint-disable no-unused-vars */
@@ -24,6 +25,7 @@ export function createPlayerControllerMethods18() {
         episodeTitle = null,
         requestHeaders = {},
         mediaSourceType = null,
+        sourceVideoHeight = 0,
         forceEngine = null,
         streamIdentity = null,
         cloudSessionToken = null,
@@ -64,6 +66,7 @@ export function createPlayerControllerMethods18() {
 
       this.currentItemId = itemId;
       this.currentItemType = itemType;
+      this.currentSourceVideoHeight = Number(sourceVideoHeight) || 0;
       this.currentImdbId = imdbId || null;
       this.currentTmdbId = tmdbId || null;
       this.currentTraktId = traktId || null;
@@ -90,7 +93,11 @@ export function createPlayerControllerMethods18() {
           return;
         }
       }
-      if (!forceEngine && this.isTizenHlsSource(url, sourceType)) {
+      if (
+        !forceEngine &&
+        this.isTizenHlsSource(url, sourceType) &&
+        !(this.canUseAvPlay() && preferQ70tAvplay(this.currentSourceVideoHeight))
+      ) {
         // Load hls.js before choosing the engine so getPlaybackEngineCandidates()
         // can distinguish a supported MSE path from a platform that needs the
         // existing AVPlay/native-HLS fallback ladder.

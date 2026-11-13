@@ -1,0 +1,6 @@
+SamSUCKS reference concepts (GPL-3.0)
+https://github.com/rfaile313/samsucks
+Inspected revision: 6b00e926e163a3154dd1993a26b47482d61ebf40
+Nuvio adaptations: optional Home frame-coalesced input and separate developer-only recycling/image/WebGL benchmark prototypes.
+See repository docs/SAMSUCKS-ATTRIBUTION.md for source/adaptation mapping.
+The reference license is included alongside this notice. No reference FPS claim is a Q70T result.

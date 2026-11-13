@@ -27,7 +27,15 @@ export function createRouterMethods02() {
       }
       this.routeReturnBackGuardUntil = Date.now() + TIZEN_ROUTE_RETURN_BACK_GUARD_MS;
     },
-    consumeRouteReturnBackGuard() {
+    consumeRouteReturnBackGuard({ freshPress = false } = {}) {
+      // Physical key-cycle/debounce handling already rejects duplicate events.
+      // A newly released-and-pressed Back must never wait for route loading.
+      if (freshPress) {
+        this.routeReturnBackGuardActive = false;
+        this.routeReturnBackGuardUntil = 0;
+        this.suppressPopstateUntil = 0;
+        return false;
+      }
       if (!this.routeReturnBackGuardActive || Date.now() >= Number(this.routeReturnBackGuardUntil || 0)) {
         this.routeReturnBackGuardActive = false;
         this.routeReturnBackGuardUntil = 0;
@@ -322,6 +330,10 @@ export function createRouterMethods02() {
       const historyState = window?.history?.state || null;
       const targetRoute = String(historyState?.route || "");
 
+      if (targetRoute === this.current) {
+        await this.back({ skipConsume: true });
+        return;
+      }
       if (targetRoute && this.routes[targetRoute]) {
         const previous = this.stack[this.stack.length - 1];
         const previousRoute = typeof previous === "string" ? previous : previous?.route;

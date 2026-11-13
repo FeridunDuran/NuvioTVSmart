@@ -5,6 +5,22 @@ export function createHomeScreenMethods12() {
   const { getTvRuntimePerformanceProfile, firstNonEmpty, isCollectionFolderItem, normalizeCollectionFolderItem } = internals;
 
   return {
+    getHomeMediaLayers() {
+      if (!this.homeMediaLayers) {
+        this.homeMediaLayers = new Set(
+          Array.from(this.container?.querySelectorAll(".home-poster-trailer-layer, .home-hero-trailer-layer") || []).filter(
+            (layer) => layer.querySelector("iframe") || layer.querySelector("video")
+          )
+        );
+      }
+      this.homeMediaLayers.forEach((layer) => {
+        if (layer.isConnected === false) this.homeMediaLayers.delete(layer);
+      });
+      return this.homeMediaLayers;
+    },
+    registerHomeMediaLayer(layer) {
+      if (layer) this.getHomeMediaLayers().add(layer);
+    },
     syncCollectionHeroMedia(hero = null) {
       const heroLayer = this.container?.querySelector(".home-hero-trailer-layer");
       const heroMedia = this.container?.querySelector(".home-modern-hero-media");
@@ -164,6 +180,7 @@ export function createHomeScreenMethods12() {
       if (!container) {
         return;
       }
+      this.homeMediaLayers?.delete(container);
       const pendingCleanup = this.homeTrailerLayerCleanupTimers?.get?.(container);
       const pendingHide = this.homeTrailerLayerHideTimers?.get?.(container);
       // Home mounts an empty trailer layer for every poster. Leaving Home used
@@ -248,7 +265,7 @@ export function createHomeScreenMethods12() {
       this.homeTrailerLayerHideTimers.set(container, timer);
     },
     pauseActiveTrailerLayersForNavigation() {
-      const layers = this.container?.querySelectorAll(".home-hero-trailer-layer.is-active, .home-poster-trailer-layer.is-active");
+      const layers = Array.from(this.getHomeMediaLayers()).filter((layer) => layer.classList.contains("is-active"));
       layers?.forEach((layer) => {
         this.pauseTrailerLayer(layer);
         layer.classList.remove("is-active");
@@ -259,6 +276,8 @@ export function createHomeScreenMethods12() {
       if (!container) {
         return;
       }
+      if (!container.firstElementChild && !container.classList.contains("is-active") && !this.homeTrailerLayerCleanupTimers?.has(container))
+        return;
       this.pauseTrailerLayer(container);
       this.homeTrailerLayerCleanupTimers ||= new WeakMap();
       const pendingCleanup = this.homeTrailerLayerCleanupTimers.get(container);
@@ -298,7 +317,7 @@ export function createHomeScreenMethods12() {
       this.scheduleTrailerLayerHide(container);
     },
     refreshPendingHomeTrailerCleanup() {
-      const layers = this.container?.querySelectorAll(".home-poster-trailer-layer, .home-hero-trailer-layer");
+      const layers = Array.from(this.getHomeMediaLayers());
       // A YouTube iframe that has not shown a frame yet is pure boot work on the
       // app's thread: 2.4 s of long tasks on a 2025 OLED, far more on slow sets.
       // Once the user moves on nothing visible is lost by dropping it, on any TV.
@@ -331,7 +350,7 @@ export function createHomeScreenMethods12() {
       });
     },
     clearHomeTrailerLayers() {
-      const layers = this.container?.querySelectorAll(".home-poster-trailer-layer, .home-hero-trailer-layer");
+      const layers = Array.from(this.getHomeMediaLayers());
       layers?.forEach((layer) => this.clearTrailerLayer(layer));
     },
     setHeroTrailerActive(active = false, heroMedia = null) {

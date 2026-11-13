@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
+import { isModernTvProfile } from "../js/platform/tvPerformancePolicy.js";
 
 function setup({ platform = "browser", constrained = false, legacyTizen = false } = {}) {
   const frames = new Map();
   let nextFrame = 0;
   const context = vm.createContext({
+    isModernTvProfile,
+    getTvRuntimePerformanceProfile: () => ({ platform, isPerformanceConstrained: constrained }),
     internals: {
+      Platform: { isTizen: () => platform === "tizen" },
       getTvRuntimePerformanceProfile: () => ({ platform, isPerformanceConstrained: constrained }),
       MODERN_HOME_CONSTANTS: { springScrollStiffness: 100, springScrollDampingRatio: 1 }
     },
@@ -28,7 +32,7 @@ function setup({ platform = "browser", constrained = false, legacyTizen = false 
     ["homeScreenMethods-17-end-modern-vertical-fast-scroll.js", "createHomeScreenMethods17"]
   ]) {
     const source = readFileSync(new URL(`../js/ui/screens/home/${file}`, import.meta.url), "utf8")
-      .replace(/^import .*;\r?\n/m, "")
+      .replace(/^import .*;\r?\n/gm, "")
       .replace("export function", "function");
     Object.assign(screen, vm.runInContext(`${source}\n${factory}()`, context));
   }
@@ -37,7 +41,9 @@ function setup({ platform = "browser", constrained = false, legacyTizen = false 
 
 for (const options of [
   { constrained: true },
-  { platform: "tizen", constrained: true, legacyTizen: true }
+  { platform: "tizen", constrained: true, legacyTizen: true },
+  { platform: "tizen" },
+  { platform: "tizen", legacyTizen: true }
 ]) {
   test(`Home immediate policy cancels both cameras and clamps both axes: ${JSON.stringify(options)}`, () => {
     const { screen, frames, context } = setup(options);
@@ -80,14 +86,7 @@ for (const options of [
   });
 }
 
-for (const options of [
-  { platform: "webos" },
-  { platform: "tizen" },
-  // Every Samsung set carries legacy-tizen as a layout fallback; only the
-  // constrained runtime profile may snap the camera.
-  { platform: "tizen", legacyTizen: true },
-  { platform: "browser" }
-]) {
+for (const options of [{ platform: "webos" }, { platform: "browser" }]) {
   test(`Home retains animated scrolling and held navigation on normal ${JSON.stringify(options)}`, () => {
     const { screen, frames } = setup(options);
     const container = {

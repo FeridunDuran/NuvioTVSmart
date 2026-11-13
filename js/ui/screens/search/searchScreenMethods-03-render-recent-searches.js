@@ -66,6 +66,10 @@ export function createSearchScreenMethods03() {
     },
     render() {
       this.cancelScheduledRender();
+      if (this.canPatchSearchShell?.()) {
+        this.renderResultsOnly({ preserveResultsFocus: true });
+        return;
+      }
       const queryText = this.query || "";
       this.container.innerHTML = `
           <div class="home-shell search-screen-shell${ScreenUtils.routeEnterClass(this, this.searchRouteEnterPending, " search-route-enter")}">
@@ -125,6 +129,7 @@ export function createSearchScreenMethods03() {
       });
       this.bindSearchInputEvents();
       this.bindActionEvents();
+      this.rememberRenderedSearchRows?.();
       const input = this.container.querySelector("#searchInput");
       input?.blur?.();
       this.restoreScrollState();
@@ -147,14 +152,13 @@ export function createSearchScreenMethods03() {
       );
     },
     cancelPendingPosterHold() {
-      if (this.pendingPosterHoldTimer) {
-        clearTimeout(this.pendingPosterHoldTimer);
-        this.pendingPosterHoldTimer = null;
+      if (this.pendingPosterHoldActive) {
+        this.pendingPosterHoldActive = null;
       }
       this.pendingPosterHoldTarget = null;
     },
     hasPendingPosterHold(node) {
-      return this.pendingPosterHoldTarget === node && Boolean(this.pendingPosterHoldTimer);
+      return this.pendingPosterHoldTarget === node && Boolean(this.pendingPosterHoldActive);
     },
     startPendingPosterHold(node) {
       this.cancelPendingPosterHold();
@@ -162,29 +166,19 @@ export function createSearchScreenMethods03() {
         return;
       }
       this.pendingPosterHoldTarget = node;
-      this.pendingPosterHoldTimer = setTimeout(() => {
-        // Personal build: a short grace period before opening the options menu. When the
-        // TV stalls during a normal click, this timer and the key release are both queued;
-        // without the grace the timer ran first and a click opened "title options".
-        this.pendingPosterHoldTimer = setTimeout(() => {
-          this.pendingPosterHoldTimer = null;
-          const target = this.pendingPosterHoldTarget;
-          this.pendingPosterHoldTarget = null;
-          if (target?.isConnected && target.classList.contains("focused")) {
-            void this.openPosterOptionsMenu(target);
-          }
-        }, 80);
-      }, POSTER_HOLD_DELAY_MS);
+      // Decide on release using the physical key event duration. A delayed
+      // JS timer can run before a queued short keyup and must never open a menu.
+      this.pendingPosterHoldActive = true;
     },
     completePendingPosterHold(node, event = null) {
       if (!this.pendingPosterHoldTarget) {
         return false;
       }
       const target = this.pendingPosterHoldTarget;
-      const hadTimer = Boolean(this.pendingPosterHoldTimer);
+      const hadHold = Boolean(this.pendingPosterHoldActive);
       const heldLongEnough = Number(event?.keyDownDurationMs || 0) >= POSTER_HOLD_DELAY_MS;
       this.cancelPendingPosterHold();
-      if (hadTimer && target === node) {
+      if (hadHold && target === node) {
         if (heldLongEnough) {
           void this.openPosterOptionsMenu(target);
         } else {

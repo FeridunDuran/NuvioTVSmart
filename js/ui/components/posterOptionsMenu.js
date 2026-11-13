@@ -71,17 +71,23 @@ export async function createPosterOptionsState(item, options = {}) {
   if (!item?.id) {
     return null;
   }
-  const watchedItems = Array.isArray(options.watchedItems)
-    ? options.watchedItems
-    : await watchedItemsRepository.getAll(2000).catch(() => []);
-  const projectedWatchedItems = await watchedTitleStateRepository
-    .getTitleWatchedItems([item], { baseWatchedItems: watchedItems, limit: 2000 })
-    .catch(() => watchedItems);
-  const sourceMode = await libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL);
   const libraryItem = toLibraryItem(item);
-  const membershipSnapshot = await libraryRepository
-    .getMembershipSnapshot(libraryItem)
-    .catch(() => ({ listMembership: {} }));
+  const projectedPromise = (async () => {
+    const watchedItems = Array.isArray(options.watchedItems)
+      ? options.watchedItems
+      : await watchedItemsRepository.getAll(2000).catch(() => []);
+    return watchedTitleStateRepository
+      .getTitleWatchedItems([item], { baseWatchedItems: watchedItems, limit: 2000 })
+      .catch(() => watchedItems);
+  })();
+  const [projectedWatchedItems, sourceMode, membershipSnapshot, isLocallySaved] = await Promise.all(
+    [
+      projectedPromise,
+      libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL),
+      libraryRepository.getMembershipSnapshot(libraryItem).catch(() => ({ listMembership: {} })),
+      savedLibraryRepository.isSaved(item.id).catch(() => false)
+    ]
+  );
   return {
     item: {
       ...item,
@@ -91,9 +97,7 @@ export async function createPosterOptionsState(item, options = {}) {
     },
     sourceMode,
     membership: membershipSnapshot.listMembership || {},
-    isSaved:
-      isInMembership(membershipSnapshot) ||
-      (await savedLibraryRepository.isSaved(item.id).catch(() => false)),
+    isSaved: isInMembership(membershipSnapshot) || isLocallySaved,
     isWatched: isTitleItemWatched(item, buildWatchedTitleIdSet(projectedWatchedItems)),
     optionIndex: 0,
     focusKey: options.focusKey || "",
@@ -223,16 +227,16 @@ export async function createPosterListPickerState(state) {
   if (!item?.id) {
     return null;
   }
-  const tabs = await libraryRepository.getListTabs().catch(() => []);
+  const libraryItem = toLibraryItem(item);
+  const [tabs, snapshot] = await Promise.all([
+    libraryRepository.getListTabs().catch(() => []),
+    libraryRepository.getMembershipSnapshot(libraryItem).catch(() => ({ listMembership: {} }))
+  ]);
   const contentType = item.type || "movie";
   const resolvedTabs =
     Array.isArray(tabs) && tabs.length
       ? tabs.filter((tab) => supportsMembershipFor(tab, contentType))
       : [{ key: "local", title: t("detail.library", {}, "Library"), type: "local" }];
-  const libraryItem = toLibraryItem(item);
-  const snapshot = await libraryRepository
-    .getMembershipSnapshot(libraryItem)
-    .catch(() => ({ listMembership: {} }));
   return {
     item: libraryItem,
     sourceMode: state.sourceMode,
@@ -271,6 +275,7 @@ export function getPosterListPickerOptions(picker) {
 
 export class PosterOptionsDialogController {
   constructor({ onDetails, onDismiss = null, onChanged = null } = {}) {
+    this.requestGeneration = 0;
     this.onDetails = onDetails;
     this.onDismiss = onDismiss;
     this.onChanged = onChanged;
@@ -280,6 +285,7 @@ export class PosterOptionsDialogController {
   }
 
   destroy({ restoreFocus = true, afterExit = null } = {}) {
+    this.requestGeneration++;
     const dialog = this.dialog;
     this.dialog = null;
     this.state = null;
@@ -297,7 +303,10 @@ export class PosterOptionsDialogController {
       return false;
     }
     this.destroy({ restoreFocus: false });
-    this.state = await createPosterOptionsState(item, options);
+    const generation = this.requestGeneration;
+    const state = await createPosterOptionsState(item, options);
+    if (generation !== this.requestGeneration) return false;
+    this.state = state;
     return this.mountOptionsDialog();
   }
 
@@ -312,7 +321,7 @@ export class PosterOptionsDialogController {
       title: item.title || item.name || item.id || "Untitled",
       subtitle: t("home_poster_dialog_subtitle", {}, "Title actions"),
       widthVw: 37.5,
-      suppressEnterUntilKeyUp: true,
+      suppressEnterUntilKeyUp: false,
       buttons: options.map((option) => ({
         label: option.label,
         key: option.action,
@@ -321,6 +330,7 @@ export class PosterOptionsDialogController {
         }
       })),
       onDismiss: () => {
+        this.requestGeneration++;
         this.dialog = null;
         this.state = null;
         this.listPicker = null;
@@ -331,7 +341,10 @@ export class PosterOptionsDialogController {
   }
 
   async activateOption(action) {
-    const result = await activatePosterOption(this.state, action);
+    const generation = this.requestGeneration;
+    const state = this.state;
+    const result = await activatePosterOption(state, action);
+    if (generation !== this.requestGeneration || state !== this.state) return false;
     if (result?.type === "details") {
       const item = result.item;
       this.destroy({
@@ -377,6 +390,7 @@ export class PosterOptionsDialogController {
       panelClassName: "poster-list-picker-dialog-panel",
       actionsClassName: "poster-list-picker-actions",
       onDismiss: () => {
+        this.requestGeneration++;
         this.dialog = null;
         this.state = null;
         this.listPicker = null;
@@ -390,6 +404,8 @@ export class PosterOptionsDialogController {
     if (!this.listPicker) {
       return false;
     }
+    const generation = this.requestGeneration;
+    const picker = this.listPicker;
     const normalizedAction = String(action || "");
     if (normalizedAction.startsWith("toggleLibraryList:")) {
       const key = normalizedAction.slice("toggleLibraryList:".length);
@@ -425,9 +441,11 @@ export class PosterOptionsDialogController {
             destructiveRemovalConfirmed: normalizedAction === "confirmDestructiveSimklRemoval"
           }
         );
+        if (generation !== this.requestGeneration || picker !== this.listPicker) return false;
         this.onChanged?.(this.state);
         this.destroy();
       } catch (error) {
+        if (generation !== this.requestGeneration || picker !== this.listPicker) return false;
         console.warn("Failed to update library lists", error);
         this.listPicker.destructiveRemovalRequired =
           error?.code === "SIMKL_DESTRUCTIVE_REMOVAL_REQUIRED";

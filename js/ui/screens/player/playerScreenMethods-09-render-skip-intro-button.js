@@ -33,6 +33,10 @@ export function createPlayerScreenMethods09() {
       const isVisible = shouldShow && (!this.skipIntroAutoHidden || this.controlsVisible);
       const activeKey = activeInterval ? `${activeInterval.type}:${activeInterval.startTime}:${activeInterval.endTime}` : "none";
       const renderKey = `${activeKey}|ready:${playbackReady ? 1 : 0}|controls:${this.controlsVisible ? 1 : 0}|hidden:${this.skipIntroAutoHidden ? 1 : 0}|dismissed:${this.skipIntervalDismissed ? 1 : 0}`;
+      if (!isVisible && this.skipIntroFocusFrame != null) {
+        if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(this.skipIntroFocusFrame);
+        this.skipIntroFocusFrame = null;
+      }
       button.classList.toggle("hidden", !isVisible);
       button.classList.toggle("is-raised", Boolean(this.controlsVisible));
       if (!isVisible && this.controlFocusZone === "skipIntro") {
@@ -96,7 +100,7 @@ export function createPlayerScreenMethods09() {
           this.skipIntroFocusFrame = requestAnimationFrame(() => {
             this.skipIntroFocusFrame = null;
             const focusTarget = this.uiRefs?.skipIntro?.querySelector(".player-skip-intro-btn");
-            if (!focusTarget || !isPlayerDomNodeAttached(focusTarget)) {
+            if (!focusTarget || !isPlayerDomNodeAttached(focusTarget) || this.uiRefs?.skipIntro?.classList.contains("hidden")) {
               return;
             }
             if (this.controlFocusZone === "nextEpisode") {

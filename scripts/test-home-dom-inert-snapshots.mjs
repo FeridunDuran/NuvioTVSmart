@@ -23,7 +23,13 @@ const inertDocument = {
     return copy;
   },
   createElement() {
-    return { ownerDocument: this, childNodes: [] };
+    return {
+      nodeType: 1,
+      dataset: {},
+      classList: { contains: () => false },
+      ownerDocument: this,
+      childNodes: []
+    };
   }
 };
 const liveDocument = {
@@ -46,8 +52,8 @@ const image = {
 };
 // Pagination can register live images before the first full Home render.
 context.api.registerHomeDomNodes([image]);
-assert.equal(context.api.sourceByNode.get(image).node.ownerDocument, inertDocument);
-assert.deepEqual(imported, [image]);
+assert.equal(context.api.sourceByNode.get(image).node.nodeType, 1);
+assert.deepEqual(imported, [], "snapshots retain no native DOM clones");
 
 const shell = {};
 const container = {
@@ -61,7 +67,7 @@ const container = {
 assert.equal(context.api.updateHomeDom(container, "<div></div>"), false);
 assert.equal(context.api.updateHomeDom(container, "<div></div>", { incremental: true }), true);
 assert.equal(documentsCreated, 1);
-assert.equal(context.api.sourceByNode.get(container).node.ownerDocument, inertDocument);
+assert.equal(context.api.sourceByNode.get(container).node.nodeType, 1);
 const poster = {
   dataset: { originalSrc: "https://art/poster.jpg" },
   getAttribute: () => "blob:poster"
@@ -83,5 +89,5 @@ context.api.updateNode(mountedRow, {
 });
 assert.equal(context.api.sourceByNode.get(mountedRow), undefined);
 console.log(
-  "Home snapshots and parsing share the inert document, including early live-node registration."
+  "Home snapshots use plain attributes without native DOM clones; parsing remains inert."
 );

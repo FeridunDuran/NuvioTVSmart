@@ -1,3 +1,4 @@
+import { virtualizeHomeCard, materializeHomeCard } from "./homeDomUpdate.js";
 import * as internals from "./homeScreenContext.js";
 import { createHomeRowWindow, isHomeRowWindowSupported, HOME_ROW_WINDOW_SELECTOR } from "./homeRowWindow.js";
 
@@ -13,7 +14,7 @@ export function createHomeScreenMethods18() {
         return false;
       }
       this.refreshPendingHomeTrailerCleanup();
-      this.homeRowWindow?.ensureReady(target);
+      if (this.getNodeRowKey(current) !== this.getNodeRowKey(target)) this.homeRowWindow?.ensureReady(target);
       const focusStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
       const scrollAdjustments = this.getExpandedPosterScrollAdjustments(current, target, direction);
       const shouldInstantCollapseExpandedPoster =
@@ -28,12 +29,7 @@ export function createHomeScreenMethods18() {
       this.focusWithoutAutoScroll(target, { suppressDelegatedFocus: true });
       this.setCurrentFocusedNode(target);
       const deferHomeArtworkUntilSettle =
-        direction === "up" ||
-        direction === "down" ||
-        (this.layoutMode === "modern" &&
-          !this.isPerformanceConstrained() &&
-          !this.isLegacyTvRuntime() &&
-          (direction === "left" || direction === "right"));
+        direction === "up" || direction === "down" || (this.layoutMode === "modern" && (direction === "left" || direction === "right"));
       this.scheduleHomeLazyImageHydration(target, {
         deferUntilVerticalSettle: deferHomeArtworkUntilSettle,
         focusedRowOnly: this.isLegacyTvRuntime()
@@ -224,7 +220,37 @@ export function createHomeScreenMethods18() {
       }
       if (this.homeRowWindowRoot !== root) {
         this.homeRowWindow?.destroy();
-        this.homeRowWindow = createHomeRowWindow({ root });
+        const updateCards = (section, update) => {
+          let changed = false;
+          section.querySelectorAll(".home-content-card").forEach((card) => {
+            changed = update(card) || changed;
+          });
+          if (changed) {
+            this.homeLazyImageHydrationIndex = null;
+            this.homeLazyImageHydrationNeedsIndexRefresh = true;
+          }
+        };
+        // Retain four recently focused rows so down/up navigation does not
+        // repeatedly parse and decode the same posters. Unvisited distant rows
+        // still release their native contents immediately.
+        const recentRows = new Map();
+        this.homeRowWindow = createHomeRowWindow({
+          root,
+          onFocusRow: (section) => {
+            if (!this.isPerformanceConstrained()) return;
+            recentRows.delete(section);
+            recentRows.set(section, true);
+            if (recentRows.size > 4) {
+              const oldest = recentRows.keys().next().value;
+              recentRows.delete(oldest);
+              if (oldest.classList.contains("home-row-parked")) updateCards(oldest, virtualizeHomeCard);
+            }
+          },
+          onPark: (section) => {
+            if (this.isPerformanceConstrained() && !recentRows.has(section)) updateCards(section, virtualizeHomeCard);
+          },
+          onRestore: (section) => updateCards(section, materializeHomeCard)
+        });
         this.homeRowWindowRoot = root;
       }
       this.homeRowWindow.observe(Array.from(root.querySelectorAll(HOME_ROW_WINDOW_SELECTOR)));

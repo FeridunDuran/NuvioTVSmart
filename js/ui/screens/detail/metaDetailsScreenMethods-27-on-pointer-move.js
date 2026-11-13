@@ -92,6 +92,7 @@ export function createMetaDetailsScreenMethods27() {
       this.commentOverlayDialog = null;
       this.commentOverlay = null;
       this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+      this.detailChromeBindPending = null;
       this.cancelTraktCommentsRequest();
       if (this.seasonSwitchTimer) {
         clearTimeout(this.seasonSwitchTimer);

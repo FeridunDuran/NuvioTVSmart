@@ -1,5 +1,5 @@
 import { syncPlayerPlaybackBadges } from "./playerPlaybackBadges.js";
-import { syncHtmlSubtitleClearance } from "./subtitleOverlayClearance.js";
+import { syncHtmlSubtitleClearance, beginSubtitleClearanceBatch, endSubtitleClearanceBatch } from "./subtitleOverlayClearance.js";
 import { MediaServerScrobbleService } from "../../../data/mediaserver/mediaServerScrobbleService.js";
 /* eslint-disable no-unused-vars */
 import * as internals from "./playerScreenContext.js";
@@ -62,120 +62,125 @@ export function createPlayerScreenMethods32() {
       if (this.isExternalFrameMode()) {
         return;
       }
-      this.syncHdrPresentation?.();
-      this.syncChaptersPanelHighlight?.();
-      this.syncStartupGateAndParentalGuide?.();
-      if (
-        PlayerSettingsStore.get().skipIntroEnabled &&
-        !this.chapterSkipIntervalsLoaded &&
-        !this.chaptersFetchInFlight &&
-        this.hasPresentedPlaybackFrame &&
-        Number(this.getPlaybackDurationSeconds() || 0) > 0 &&
-        Date.now() >= Number(this.chapterSkipIntervalsRetryAt || 0)
-      ) {
-        this.chapterSkipIntervalsRetryAt = Date.now() + 5000;
-        void this.refreshChapterSkipIntervals?.();
-      }
-      syncPlayerPlaybackBadges(this, PlayerController, renderPlayerImageBadgeChip, getTrackLanguageLabel);
-      const isLivePlayback = this.isLivePlayback();
-      const watchedMs = this.liveWatchClock.update(
-        isLivePlayback,
-        PlayerController.isPlaying && !this.paused && !this.isBufferingForPauseOverlay()
-      );
-      this.uiRefs?.progressShell?.classList.toggle("hidden", isLivePlayback);
-      if (isLivePlayback && this.seekPreviewSeconds != null) this.cancelSeekPreview();
-      if (isLivePlayback && this.controlFocusZone === "progress") this.focusFirstControl();
-      this.ensureNextEpisodeStreamsPrefetch();
-      this.shouldShowNextEpisodeCard();
-      void this.refreshLoadingOverlayProgress();
-      const current = this.getPlaybackCurrentSeconds();
-      this.updateActiveSkipInterval(current);
-      this.updateSkipIntroCountdown(Date.now());
-      const displayCurrent = this.getPlaybackDisplayCurrentSeconds();
-      const duration = this.getPlaybackDisplayDurationSeconds();
-      this.evaluatePostPlayRecommendation();
-      const uiRefs = this.uiRefs || {};
-      const uiState = this.lastUiTickState || (this.lastUiTickState = {});
-      const progressBuffered = uiRefs.progressBuffered;
-      if (progressBuffered) {
-        const bufferedSeconds = this.getPlaybackBufferedSeconds();
-        const bufferedVisible = Number.isFinite(bufferedSeconds) && duration > 0 && bufferedSeconds > current + 0.25;
-        const bufferedProgress = bufferedVisible ? clamp(bufferedSeconds / duration, 0, 1) : 0;
-        const nextBufferedWidth = `${Math.round(bufferedProgress * 10000) / 100}%`;
-        if (uiState.bufferedWidth !== nextBufferedWidth) {
-          progressBuffered.style.width = nextBufferedWidth;
-          uiState.bufferedWidth = nextBufferedWidth;
+      beginSubtitleClearanceBatch(this);
+      try {
+        this.syncHdrPresentation?.();
+        this.syncChaptersPanelHighlight?.();
+        this.syncStartupGateAndParentalGuide?.();
+        if (
+          PlayerSettingsStore.get().skipIntroEnabled &&
+          !this.chapterSkipIntervalsLoaded &&
+          !this.chaptersFetchInFlight &&
+          this.hasPresentedPlaybackFrame &&
+          Number(this.getPlaybackDurationSeconds() || 0) > 0 &&
+          Date.now() >= Number(this.chapterSkipIntervalsRetryAt || 0)
+        ) {
+          this.chapterSkipIntervalsRetryAt = Date.now() + 5000;
+          void this.refreshChapterSkipIntervals?.();
         }
-        if (uiState.bufferedVisible !== bufferedVisible) {
-          progressBuffered.classList.toggle("is-visible", bufferedVisible);
-          uiState.bufferedVisible = bufferedVisible;
+        syncPlayerPlaybackBadges(this, PlayerController, renderPlayerImageBadgeChip, getTrackLanguageLabel);
+        const isLivePlayback = this.isLivePlayback();
+        const watchedMs = this.liveWatchClock.update(
+          isLivePlayback,
+          PlayerController.isPlaying && !this.paused && !this.isBufferingForPauseOverlay()
+        );
+        this.uiRefs?.progressShell?.classList.toggle("hidden", isLivePlayback);
+        if (isLivePlayback && this.seekPreviewSeconds != null) this.cancelSeekPreview();
+        if (isLivePlayback && this.controlFocusZone === "progress") this.focusFirstControl();
+        this.ensureNextEpisodeStreamsPrefetch();
+        this.shouldShowNextEpisodeCard();
+        void this.refreshLoadingOverlayProgress();
+        const current = this.getPlaybackCurrentSeconds();
+        this.updateActiveSkipInterval(current);
+        this.updateSkipIntroCountdown(Date.now());
+        const displayCurrent = this.getPlaybackDisplayCurrentSeconds();
+        const duration = this.getPlaybackDisplayDurationSeconds();
+        this.evaluatePostPlayRecommendation();
+        const uiRefs = this.uiRefs || {};
+        const uiState = this.lastUiTickState || (this.lastUiTickState = {});
+        const progressBuffered = uiRefs.progressBuffered;
+        if (progressBuffered) {
+          const bufferedSeconds = this.getPlaybackBufferedSeconds();
+          const bufferedVisible = Number.isFinite(bufferedSeconds) && duration > 0 && bufferedSeconds > current + 0.25;
+          const bufferedProgress = bufferedVisible ? clamp(bufferedSeconds / duration, 0, 1) : 0;
+          const nextBufferedWidth = `${Math.round(bufferedProgress * 10000) / 100}%`;
+          if (uiState.bufferedWidth !== nextBufferedWidth) {
+            progressBuffered.style.width = nextBufferedWidth;
+            uiState.bufferedWidth = nextBufferedWidth;
+          }
+          if (uiState.bufferedVisible !== bufferedVisible) {
+            progressBuffered.classList.toggle("is-visible", bufferedVisible);
+            uiState.bufferedVisible = bufferedVisible;
+          }
         }
-      }
-      this.renderProgressPosition();
-      this.syncSkipIntroButtonProgress();
-      this.renderSkipIntroButton();
-      this.syncPlayerOverlayLayoutState();
-      this.renderBitmapSubtitleAtCurrentTime();
-      this.maybeAutoplayNextEpisode();
+        this.renderProgressPosition();
+        this.syncSkipIntroButtonProgress();
+        this.renderSkipIntroButton();
+        this.syncPlayerOverlayLayoutState();
+        this.renderBitmapSubtitleAtCurrentTime();
+        this.maybeAutoplayNextEpisode();
 
-      const clock = uiRefs.clock;
-      if (clock) {
-        const now = new Date();
-        const nextClockMinuteKey = `${now.getHours()}:${now.getMinutes()}`;
-        if (uiState.clockMinuteKey !== nextClockMinuteKey) {
-          const nextClockText = formatClock(now, this.webOsClockLocaleInfo);
-          clock.textContent = nextClockText;
-          uiState.clockText = nextClockText;
-          uiState.clockMinuteKey = nextClockMinuteKey;
+        const clock = uiRefs.clock;
+        if (clock) {
+          const now = new Date();
+          const nextClockMinuteKey = `${now.getHours()}:${now.getMinutes()}`;
+          if (uiState.clockMinuteKey !== nextClockMinuteKey) {
+            const nextClockText = formatClock(now, this.webOsClockLocaleInfo);
+            clock.textContent = nextClockText;
+            uiState.clockText = nextClockText;
+            uiState.clockMinuteKey = nextClockMinuteKey;
+          }
         }
-      }
 
-      const endsAt = uiRefs.endsAt;
-      if (endsAt) {
-        const playbackSpeed = this.getPlaybackSpeed();
-        // Keep this clock based on the full media duration. Outro intervals are
-        // handled independently by skip/autoplay, as they are on Android TV.
-        // Android derives this from the timeline position, which is the preview target while seeking.
-        const endsAtPosition = this.seekPreviewSeconds != null ? Number(this.seekPreviewSeconds) : displayCurrent;
-        const remainingMs = isLivePlayback ? null : calculateRemainingPlaybackMilliseconds(endsAtPosition, duration, playbackSpeed);
-        const nextEndsAtMinuteBucket = remainingMs == null ? -1 : Math.floor((Date.now() + remainingMs) / 60000);
-        endsAt.classList.toggle("hidden", isLivePlayback);
-        if (uiState.endsAtMinuteBucket !== nextEndsAtMinuteBucket) {
-          const nextEndsAtText = isLivePlayback
-            ? ""
-            : t("player_ends_at", [formatEndsAt(endsAtPosition, duration, this.webOsClockLocaleInfo, playbackSpeed)], "Ends at %1$s");
-          endsAt.textContent = nextEndsAtText;
-          uiState.endsAtText = nextEndsAtText;
-          uiState.endsAtMinuteBucket = nextEndsAtMinuteBucket;
+        const endsAt = uiRefs.endsAt;
+        if (endsAt) {
+          const playbackSpeed = this.getPlaybackSpeed();
+          // Keep this clock based on the full media duration. Outro intervals are
+          // handled independently by skip/autoplay, as they are on Android TV.
+          // Android derives this from the timeline position, which is the preview target while seeking.
+          const endsAtPosition = this.seekPreviewSeconds != null ? Number(this.seekPreviewSeconds) : displayCurrent;
+          const remainingMs = isLivePlayback ? null : calculateRemainingPlaybackMilliseconds(endsAtPosition, duration, playbackSpeed);
+          const nextEndsAtMinuteBucket = remainingMs == null ? -1 : Math.floor((Date.now() + remainingMs) / 60000);
+          endsAt.classList.toggle("hidden", isLivePlayback);
+          if (uiState.endsAtMinuteBucket !== nextEndsAtMinuteBucket) {
+            const nextEndsAtText = isLivePlayback
+              ? ""
+              : t("player_ends_at", [formatEndsAt(endsAtPosition, duration, this.webOsClockLocaleInfo, playbackSpeed)], "Ends at %1$s");
+            endsAt.textContent = nextEndsAtText;
+            uiState.endsAtText = nextEndsAtText;
+            uiState.endsAtMinuteBucket = nextEndsAtMinuteBucket;
+          }
         }
-      }
 
-      if (this.pauseOverlayVisible) {
-        const overlayClock = this.uiRefs?.pauseOverlay?.querySelector(".player-pause-overlay-clock");
-        if (overlayClock && overlayClock.textContent !== uiState.clockText) {
-          overlayClock.textContent = uiState.clockText || "--:--";
+        if (this.pauseOverlayVisible) {
+          const overlayClock = this.uiRefs?.pauseOverlay?.querySelector(".player-pause-overlay-clock");
+          if (overlayClock && overlayClock.textContent !== uiState.clockText) {
+            overlayClock.textContent = uiState.clockText || "--:--";
+          }
+          const overlayEndsAt = this.uiRefs?.pauseOverlay?.querySelector(".player-pause-overlay-ends-at");
+          if (overlayEndsAt && overlayEndsAt.textContent !== uiState.endsAtText) {
+            overlayEndsAt.textContent = uiState.endsAtText || t("player_ends_at", ["--:--"], "Ends at %1$s");
+          }
         }
-        const overlayEndsAt = this.uiRefs?.pauseOverlay?.querySelector(".player-pause-overlay-ends-at");
-        if (overlayEndsAt && overlayEndsAt.textContent !== uiState.endsAtText) {
-          overlayEndsAt.textContent = uiState.endsAtText || t("player_ends_at", ["--:--"], "Ends at %1$s");
+
+        const timeLabel = uiRefs.timeLabel;
+        if (timeLabel && isLivePlayback) {
+          const nextTimeLabel = t("player_live_watched", [formatTime(watchedMs / 1000)], "LIVE  %1$s");
+          if (uiState.timeLabelText !== nextTimeLabel) {
+            timeLabel.textContent = nextTimeLabel;
+            uiState.timeLabelText = nextTimeLabel;
+          }
         }
-      }
 
-      const timeLabel = uiRefs.timeLabel;
-      if (timeLabel && isLivePlayback) {
-        const nextTimeLabel = t("player_live_watched", [formatTime(watchedMs / 1000)], "LIVE  %1$s");
-        if (uiState.timeLabelText !== nextTimeLabel) {
-          timeLabel.textContent = nextTimeLabel;
-          uiState.timeLabelText = nextTimeLabel;
+        this.syncPauseOverlayState();
+        this.renderNextEpisodeCard();
+        syncHtmlSubtitleClearance(this);
+
+        if (this.seekOverlayVisible && this.seekPreviewSeconds == null) {
+          this.renderSeekOverlay();
         }
-      }
-
-      this.syncPauseOverlayState();
-      this.renderNextEpisodeCard();
-      syncHtmlSubtitleClearance(this);
-
-      if (this.seekOverlayVisible && this.seekPreviewSeconds == null) {
-        this.renderSeekOverlay();
+      } finally {
+        endSubtitleClearanceBatch(this);
       }
     },
     renderProgressPosition() {

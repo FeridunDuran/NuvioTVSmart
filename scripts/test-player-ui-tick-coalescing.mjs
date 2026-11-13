@@ -23,6 +23,8 @@ async function loadTickMethods(clock) {
       t: (key, params, fallback) => fallback
     },
     syncHtmlSubtitleClearance: () => {},
+    beginSubtitleClearanceBatch: () => {},
+    endSubtitleClearanceBatch: () => {},
     performance: { now: () => clock.now },
     setTimeout: (callback, delay) => {
       const timer = { callback, at: clock.now + Number(delay || 0), cleared: false };

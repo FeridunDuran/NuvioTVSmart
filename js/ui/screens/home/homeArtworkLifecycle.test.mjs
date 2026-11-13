@@ -368,3 +368,104 @@ test("the stylesheet's own object-fit reaches the rescaler", () => {
   assert.equal(asked[0].width, 220);
   assert.equal(asked[0].height, 338);
 });
+
+test("a pending artwork frame is canceled when vertical navigation defers hydration", async () => {
+  const context = buildHome({ constants: { verticalScrollSettlePollMs: 5 } });
+  const frames = new Map();
+  let nextFrame = 0;
+  context.requestAnimationFrame = (fn) => {
+    frames.set(++nextFrame, fn);
+    return nextFrame;
+  };
+  context.cancelAnimationFrame = (id) => frames.delete(id);
+  const row = makeRow(context, { top: 100 });
+  const images = [makeImage(context, { row, src: "https://art/deferred.jpg" })];
+  const screen = makeScreen(context, { rows: [row], images });
+  screen.layoutMode = "modern";
+  let scrolling = true;
+  screen.isModernHydrationScrollActive = () => scrolling;
+  screen.scheduleHomeLazyImageHydration(row);
+  assert.equal(frames.size, 1);
+  screen.scheduleHomeLazyImageHydration(row, { deferUntilVerticalSettle: true });
+  try {
+    assert.equal(
+      frames.size,
+      0,
+      "the earlier frame cannot decode posters during the camera movement"
+    );
+  } catch (error) {
+    clearTimeout(screen.homeLazyImageHydrationSettleTimer);
+    throw error;
+  }
+  scrolling = false;
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(frames.size, 1);
+  for (const fn of frames.values()) fn();
+  assert.equal(images[0].src, "https://art/deferred.jpg");
+});
+
+test("a focused-row request cannot narrow an already queued neighbor artwork pass", () => {
+  const context = buildHome();
+  const frames = new Map();
+  context.requestAnimationFrame = (fn) => {
+    frames.set(1, fn);
+    return 1;
+  };
+  const row = makeRow(context, { top: 100 });
+  const screen = makeScreen(context, { rows: [row], images: [] });
+  screen.isLegacyTvRuntime = () => true;
+  let options;
+  screen.hydrateHomeLazyImages = (_anchor, opts) => {
+    options = opts;
+  };
+  screen.scheduleHomeLazyImageHydration(row, { includeNeighborRows: true });
+  screen.scheduleHomeLazyImageHydration(row, { focusedRowOnly: true });
+  for (const fn of frames.values()) fn();
+  clearTimeout(screen.homeLazyImageNeighborTimer);
+  assert.equal(options.includeNeighborRows, true);
+  assert.equal(options.focusedRowOnly, false);
+});
+
+test("a deferred artwork retry cannot hydrate a replacement Home container", async () => {
+  const context = buildHome({ constants: { verticalScrollSettlePollMs: 5 } });
+  const row = makeRow(context, { top: 100 });
+  const images = [makeImage(context, { row, src: "https://art/old-mount.jpg" })];
+  const screen = makeScreen(context, { rows: [row], images });
+  screen.layoutMode = "modern";
+  let hydrated = 0;
+  screen.hydrateHomeLazyImages = () => hydrated++;
+  screen.scheduleHomeLazyImageHydration(row, { deferUntilVerticalSettle: true });
+  screen.container = {};
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(hydrated, 0);
+  assert.equal(screen.homeLazyImageHydrationSettleTimer, null);
+});
+
+test("artwork eviction reads every row before any image-source write", () => {
+  const context = buildHome();
+  const a = makeRow(context, { top: 9000 });
+  const b = makeRow(context, { top: 12000 });
+  const images = [
+    makeImage(context, { row: a, src: "a.jpg" }),
+    makeImage(context, { row: b, src: "b.jpg" })
+  ];
+  const screen = makeScreen(context, { rows: [a, b], images });
+  screen.buildHomeLazyImageHydrationIndex();
+  const order = [];
+  for (const [row, name] of [
+    [a, "a"],
+    [b, "b"]
+  ]) {
+    const read = row.getBoundingClientRect;
+    row.getBoundingClientRect = () => {
+      order.push(`read:${name}`);
+      return read();
+    };
+  }
+  screen.releaseHomeLazyImage = (image) => {
+    order.push(`release:${image.dataset.src}`);
+    return true;
+  };
+  assert.equal(screen.evictDistantHomeLazyImages(), 2);
+  assert.deepEqual(order, ["read:a", "read:b", "release:a.jpg", "release:b.jpg"]);
+});

@@ -40,9 +40,8 @@ export function createDiscoverScreenMethods03() {
       return Boolean(node?.matches?.(".discover-card.seeall-card.focusable[data-action='openDetail']"));
     },
     cancelPendingPosterHold() {
-      if (this.pendingPosterHoldTimer) {
-        clearTimeout(this.pendingPosterHoldTimer);
-        this.pendingPosterHoldTimer = null;
+      if (this.pendingPosterHoldActive) {
+        this.pendingPosterHoldActive = null;
       }
       this.pendingPosterHoldTarget = null;
     },
@@ -61,20 +60,9 @@ export function createDiscoverScreenMethods03() {
       this.pendingPosterHoldTarget = {
         focusKey: String(node.dataset.focusKey || "")
       };
-      this.pendingPosterHoldTimer = setTimeout(() => {
-        // Personal build: a short grace period before opening the options menu. When the
-        // TV stalls during a normal click, this timer and the key release are both queued;
-        // without the grace the timer ran first and a click opened "title options".
-        this.pendingPosterHoldTimer = setTimeout(() => {
-          this.pendingPosterHoldTimer = null;
-          const current = this.container?.querySelector(".discover-card.seeall-card.focusable.focused[data-action='openDetail']") || null;
-          if (!this.hasPendingPosterHold(current)) {
-            return;
-          }
-          this.pendingPosterHoldTarget.holdTriggered = true;
-          void this.openPosterOptionsMenu(current);
-        }, 80);
-      }, POSTER_HOLD_DELAY_MS);
+      // Decide on release using the physical key event duration. A delayed
+      // JS timer can run before a queued short keyup and must never open a menu.
+      this.pendingPosterHoldActive = true;
       return true;
     },
     completePendingPosterHold(node, event = null) {
@@ -130,7 +118,9 @@ export function createDiscoverScreenMethods03() {
             this.requestRender();
           },
           onChanged: () => {
-            void this.refreshWatchedTitleIds().then(() => this.requestRender());
+            void this.refreshWatchedTitleIds().then((changed) => {
+              if (changed && Router.getCurrent() === "discover") this.requestRender();
+            });
           }
         });
       }

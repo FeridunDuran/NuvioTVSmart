@@ -92,7 +92,7 @@ export const FocusEngine = {
     normalizedEvent.stopPropagation();
     normalizedEvent.stopImmediatePropagation();
 
-    if (Router.consumeRouteReturnBackGuard?.()) {
+    if (Router.consumeRouteReturnBackGuard?.({ freshPress: true })) {
       return;
     }
 

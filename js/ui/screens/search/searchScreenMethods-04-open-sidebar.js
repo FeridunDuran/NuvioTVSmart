@@ -110,7 +110,9 @@ export function createSearchScreenMethods04() {
         this.ensureResultsRowVisible(target);
         this.ensureResultCardVisible(current, target);
       }
-      this.captureLiveViewState();
+      this.captureLiveViewState({
+        rows: [current?.closest?.(".search-results-row"), target.closest?.(".search-results-row")].filter(Boolean)
+      });
       return true;
     },
     cancelScrollAnimation(container, axis = "x") {
@@ -307,9 +309,12 @@ export function createSearchScreenMethods04() {
 
       const styles = globalThis.getComputedStyle ? globalThis.getComputedStyle(track) : null;
       const leftPad = Math.max(0, Number.parseFloat(styles?.paddingLeft || "0") || 0);
-      const trackRect = track.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const targetLeft = targetRect.left - trackRect.left + Number(track.scrollLeft || 0);
+      // Direct children already expose content coordinates; avoid two forced
+      // rectangle measurements on every horizontal D-pad move.
+      const targetLeft =
+        target.offsetParent === track
+          ? Number(target.offsetLeft || 0)
+          : target.getBoundingClientRect().left - track.getBoundingClientRect().left + Number(track.scrollLeft || 0);
       const maxScrollLeft = Math.max(0, Number(track.scrollWidth || 0) - Number(track.clientWidth || 0));
       this.animateScroll(
         track,

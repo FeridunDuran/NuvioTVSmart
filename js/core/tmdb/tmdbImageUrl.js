@@ -1,5 +1,8 @@
 import { Platform } from "../../platform/index.js";
-import { getTvArtworkPixelRatio } from "../../platform/tvRuntimePerformance.js";
+import {
+  getTvRuntimePerformanceProfile,
+  getTvArtworkPixelRatio
+} from "../../platform/tvRuntimePerformance.js";
 
 const TMDB_IMAGE_HOST_PATTERN = /^(?:https?:)?\/\/image\.tmdb\.org\//i;
 
@@ -15,10 +18,16 @@ const TMDB_LEGACY_TV_CARD_POSTER_SIZE = "w342";
 let cachedCardPosterSize = null;
 
 function tvCanUseSmallCardPosters() {
+  // Decide from the active render policy, not OffscreenCanvas presence alone.
   // A rescaler-less TV that paints at one device pixel per CSS pixel can take
   // w342; a panel that paints larger keeps w500 so it stays sharp.
   const isTv = Boolean(Platform.isTizen?.() || Platform.isWebOS?.());
-  return isTv && typeof OffscreenCanvas === "undefined" && getTvArtworkPixelRatio() === 1;
+  const profile = getTvRuntimePerformanceProfile();
+  const rescalerUnavailable =
+    profile.isPerformanceConstrained ||
+    profile.isLegacyTvRuntime ||
+    typeof OffscreenCanvas === "undefined";
+  return isTv && rescalerUnavailable && getTvArtworkPixelRatio() <= 1;
 }
 
 /**

@@ -34,11 +34,15 @@ export function createMetaDetailsScreenMethods02() {
       this.posterOptionsController = null;
       this.posterOptionsFocusRestore = null;
       this.pendingPosterHoldTarget = null;
-      this.pendingPosterHoldTimer = null;
+      this.pendingPosterHoldActive = null;
       this.pendingHeroHoldTarget = null;
-      this.pendingHeroHoldTimer = null;
+      this.pendingHeroHoldActive = null;
       this.streamChooserFocus = null;
       this.streamChooserLoadToken = 0;
+      this.detailStatePending = false;
+      this.detailPlaybackMutationToken = 0;
+      this.pendingDetailPlayOptions = null;
+      this.container.removeAttribute("aria-busy");
       this.isLoadingDetail = true;
       this.detailLoadToken = (this.detailLoadToken || 0) + 1;
       this.cancelTraktCommentsRequest();
@@ -135,42 +139,17 @@ export function createMetaDetailsScreenMethods02() {
         return;
       }
 
-      this.container.innerHTML = `
-          <div class="detail-loading-shell" aria-label="Loading detail">
-            <div class="detail-loading-top">
-              <div class="detail-loading-block detail-loading-poster"></div>
-            </div>
-            <div class="detail-loading-meta">
-              <div class="detail-loading-block detail-loading-pill"></div>
-              <div class="detail-loading-block detail-loading-pill short"></div>
-            </div>
-            <div class="detail-loading-copy">
-              <div class="detail-loading-block detail-loading-line"></div>
-              <div class="detail-loading-block detail-loading-line wide"></div>
-              <div class="detail-loading-block detail-loading-line mid"></div>
-            </div>
-            <div class="detail-loading-tags">
-              <div class="detail-loading-block detail-loading-tag"></div>
-              <div class="detail-loading-block detail-loading-tag"></div>
-              <div class="detail-loading-block detail-loading-tag"></div>
-              <div class="detail-loading-block detail-loading-tag"></div>
-            </div>
-            <div class="detail-loading-tags">
-              <div class="detail-loading-block detail-loading-chip"></div>
-              <div class="detail-loading-block detail-loading-chip"></div>
-            </div>
-          </div>
-        `;
-
-      // Android composes Detail immediately and lets the ViewModel load metadata
-      // independently. The loading shell is already visible, so do not hold
-      // route completion or Back/D-pad handling on canonicalization or metadata
-      // requests.
+      // loadDetail paints cached/route metadata synchronously before its first
+      // await; avoid building a skeleton DOM that would immediately be discarded.
+      this.container.textContent = "";
       const loadToken = this.detailLoadToken;
       void this.loadDetail().catch((error) => {
         if (loadToken !== this.detailLoadToken || Router.getCurrent() !== "detail" || !this.container) {
           return;
         }
+        this.detailStatePending = false;
+        this.isLoadingDetail = false;
+        this.container.removeAttribute("aria-busy");
         console.warn("Detail background load failed", error);
         this.renderError("Unable to load detail.");
       });

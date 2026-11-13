@@ -86,7 +86,8 @@ function hydrate(image) {
   const width = Math.round(Number(rect.width || 0) * ratio);
   const height = Math.round(Number(rect.height || 0) * ratio);
   const finish = () => {
-    delete image.dataset.artworkPending;
+    // An old completion cannot unlock a newer request on a recycled image.
+    if (image.dataset.artworkToken === token) delete image.dataset.artworkPending;
   };
   if (!isRescalableArtworkFit(fit) || !(width > 0) || !(height > 0)) {
     finish();
@@ -97,7 +98,13 @@ function hydrate(image) {
     !image.isConnected ||
     image.dataset.artworkToken !== token ||
     image.dataset.artworkSrc !== source;
-  rescaleArtwork(source, { width, height, fit, priority: 0, isStale })
+  rescaleArtwork(source, {
+    width,
+    height,
+    fit,
+    priority: image.closest(".focusable")?.classList.contains("focused") ? 0 : 1,
+    isStale
+  })
     .then((objectUrl) => {
       finish();
       if (isStale()) {

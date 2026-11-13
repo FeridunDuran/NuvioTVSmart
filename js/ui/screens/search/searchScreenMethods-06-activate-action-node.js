@@ -18,7 +18,6 @@ export function createSearchScreenMethods06() {
   return {
     activateActionNode(node) {
       if (!node) return;
-      if (Date.now() < Number(this.activationGuardUntil || 0)) return;
       const action = String(node.dataset.action || "");
       if (!action) return;
 

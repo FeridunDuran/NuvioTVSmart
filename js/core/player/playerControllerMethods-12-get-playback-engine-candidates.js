@@ -1,3 +1,4 @@
+import { preferQ70tAvplay } from "./q70tPlaybackPolicy.js";
 /* eslint-disable no-unused-vars */
 import * as internals from "./playerController.js";
 
@@ -27,6 +28,7 @@ export function createPlayerControllerMethods12() {
 
       if (this.isLikelyHlsMimeType(normalizedSourceType)) {
         const candidates = [];
+        if (isTizenRuntime && canUseAvPlay && preferQ70tAvplay(this.currentSourceVideoHeight)) pushCandidate(candidates, avplayEngine);
         if (isTizenRuntime && canUseHlsJs) {
           // Match Android's single HLS media pipeline when MSE is available.
           // This also avoids the long AVPlay connection-failure path observed

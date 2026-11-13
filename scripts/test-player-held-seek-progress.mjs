@@ -21,6 +21,8 @@ async function loadSeekMethods() {
       t: (key, params, fallback) => fallback
     },
     syncHtmlSubtitleClearance: () => {},
+    beginSubtitleClearanceBatch: () => {},
+    endSubtitleClearanceBatch: () => {},
     setTimeout,
     clearTimeout
   });

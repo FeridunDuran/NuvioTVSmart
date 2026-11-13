@@ -13,9 +13,31 @@ export function keepControlsClearance({
   return Boolean(controlsVisible) || Number(now) < Number(hideUntil || 0);
 }
 
+// A UI tick renders several overlays. Measure their final layout once, after all
+// writes, while keeping standalone key/resize updates synchronous.
+const clearanceBatches = new WeakMap();
+
+export function beginSubtitleClearanceBatch(screen) {
+  const batch = clearanceBatches.get(screen);
+  if (batch) batch.depth++;
+  else clearanceBatches.set(screen, { depth: 1, pending: false });
+}
+
+export function endSubtitleClearanceBatch(screen) {
+  const batch = clearanceBatches.get(screen);
+  if (!batch || --batch.depth > 0) return;
+  clearanceBatches.delete(screen);
+  if (batch.pending) syncHtmlSubtitleClearance(screen);
+}
+
 // HTML bottom cues and capable ASS renderers receive selective placement.
 // Authored positions and opaque native subtitle planes retain their coordinates.
 export function syncHtmlSubtitleClearance(screen) {
+  const batch = clearanceBatches.get(screen);
+  if (batch) {
+    batch.pending = true;
+    return;
+  }
   const refs = screen.uiRefs;
   const root = refs?.root;
   if (!root?.style || typeof root.getBoundingClientRect !== "function") return;

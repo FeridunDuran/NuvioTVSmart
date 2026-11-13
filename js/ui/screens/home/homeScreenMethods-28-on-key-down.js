@@ -1,3 +1,4 @@
+import { createHomeFrameNavigation } from "./homeFrameNavigation.js";
 import * as internals from "./homeScreenContext.js";
 import { registerHomeDomNodes } from "./homeDomUpdate.js";
 
@@ -19,8 +20,37 @@ export function createHomeScreenMethods28() {
 
   return {
     onKeyDown(event) {
-      const currentFocusedNode = this.getCurrentFocusedNode() || this.container?.querySelector(".focusable") || null;
       const code = Number(event?.keyCode || 0);
+      // Experimental Home-only repeat queue. First presses stay synchronous.
+      if (
+        globalThis.__NUVIO_HOME_FRAME_NAV__ === true &&
+        event?.repeat &&
+        isDirectionalKeyCode(code) &&
+        !event.homeFrameFlushed &&
+        !this._homeHoldDialog &&
+        !this.continueWatchingMenu &&
+        !this.posterHoldMenu
+      ) {
+        const host = this;
+        this.homeFrameNavigation ||= createHomeFrameNavigation(
+          (next) => host.onKeyDown(next),
+          () =>
+            globalThis.__NUVIO_HOME_FRAME_NAV__ === true &&
+            Router.getCurrent() === "home" &&
+            !document.body.classList.contains("nuvio-modal-open") &&
+            !host._homeHoldDialog &&
+            !host.continueWatchingMenu &&
+            !host.posterHoldMenu
+        );
+        event.preventDefault?.();
+        this.homeFrameNavigation.queue(event);
+        return true;
+      }
+      if (!event?.homeFrameFlushed) {
+        if (code === 13) this.homeFrameNavigation?.flush();
+        else this.homeFrameNavigation?.cancel();
+      }
+      const currentFocusedNode = this.getCurrentFocusedNode() || this.container?.querySelector(".focusable") || null;
       if (code === 13 || isDirectionalKeyCode(code)) {
         this.markUserInteractionSinceHomePaint();
       }
@@ -126,6 +156,7 @@ export function createHomeScreenMethods28() {
         return true;
       }
       const keyCode = Number(event?.keyCode || 0);
+      if (isDirectionalKeyCode(keyCode)) this.homeFrameNavigation?.flush();
       const direction = getDirectionFromKeyCode(keyCode);
       if (direction && this.lastDirectionalKeyAtByDirection) {
         delete this.lastDirectionalKeyAtByDirection[direction];
@@ -159,6 +190,9 @@ export function createHomeScreenMethods28() {
       }
     },
     consumeBackRequest() {
+      this.homeFrameNavigation?.cancel();
+      // Cancel unfinished menu IO without holding Back behind it.
+      this.homeMenuRequestToken = (this.homeMenuRequestToken || 0) + 1;
       if (this._homeHoldDialog) {
         this._homeHoldDialog.destroy();
         if (this.continueWatchingMenu) {

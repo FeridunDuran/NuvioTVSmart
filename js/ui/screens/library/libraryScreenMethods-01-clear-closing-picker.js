@@ -153,7 +153,7 @@ export function createLibraryScreenMethods01() {
       this.posterOptionsController = null;
       this.pendingPosterOptionsFocusKey = "";
       this.pendingPosterHoldTarget = null;
-      this.pendingPosterHoldTimer = null;
+      this.pendingPosterHoldActive = null;
       this.gridRows = [];
       this.lastPrivacyFocus = "private";
       this.partialContentRefresh = null;

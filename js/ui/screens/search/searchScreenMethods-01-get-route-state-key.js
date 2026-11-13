@@ -1,3 +1,4 @@
+import { patchSearchRows, rememberSearchRows } from "./searchRowsDom.js";
 /* eslint-disable no-unused-vars */
 import * as internals from "./searchScreen.js";
 
@@ -13,6 +14,8 @@ export function createSearchScreenMethods01() {
     getSidebarProfileState,
     renderRootSidebar,
     buildWatchedTitleIdSet,
+    isTitleItemWatched,
+    renderTitleWatchedBadge,
     renderLoadingIndicator,
     escapeHtml,
     t,
@@ -139,23 +142,30 @@ export function createSearchScreenMethods01() {
       });
     },
     async refreshWatchedTitleIds(items = null) {
-      const watchedItems = await watchedItemsRepository.getAll(5000).catch(() => []);
+      const token = this.loadToken;
       const catalogItems = Array.isArray(items) ? items : (this.rows || []).flatMap((row) => (Array.isArray(row?.items) ? row.items : []));
+      const watchedItems = await watchedItemsRepository.getAll(5000).catch(() => []);
+      if (token !== this.loadToken) return false;
       const projectedItems = await watchedTitleStateRepository
         .getTitleWatchedItems(catalogItems, {
           baseWatchedItems: watchedItems,
           limit: 5000
         })
         .catch(() => watchedItems);
-      this.watchedTitleIds = buildWatchedTitleIdSet(projectedItems);
+      if (token !== this.loadToken) return false;
+      const nextIds = buildWatchedTitleIdSet(projectedItems);
+      const previousIds = this.watchedTitleIds;
+      if (previousIds?.size === nextIds.size && Array.from(nextIds).every((id) => previousIds.has(id))) return false;
+      this.watchedTitleIds = nextIds;
+      return true;
     },
-    captureLiveViewState() {
+    captureLiveViewState({ rows = null } = {}) {
       const content = this.container?.querySelector(".search-content");
       if (content) {
         this.contentScrollTop = Number(content.scrollTop || 0);
       }
       const nextRowScroll = {};
-      Array.from(this.container?.querySelectorAll(".search-results-row") || []).forEach((rowNode) => {
+      Array.from(new Set(rows || this.container?.querySelectorAll(".search-results-row") || [])).forEach((rowNode) => {
         const rowKey = String(rowNode.dataset.rowKey || "");
         const track = rowNode.querySelector(".search-results-track");
         if (rowKey && track) {
@@ -173,7 +183,7 @@ export function createSearchScreenMethods01() {
       this.container = document.getElementById("search");
       ScreenUtils.show(this.container);
       this.searchRouteEnterPending = true;
-      this.activationGuardUntil = Date.now() + 220;
+      this.searchRenderedShellState = null;
       this.layoutPrefs = LayoutPreferences.get();
       const sidebarProfilePromise = getSidebarProfileState().catch((err) => {
         console.warn("Search sidebar profile failed to load", err);
@@ -189,6 +199,7 @@ export function createSearchScreenMethods01() {
       this.focusZone = "content";
       this.sidebarFocusIndex = 0;
       this.rows = [];
+      this.watchedTitleIds = new Set();
       this.recentSearches = SearchHistoryStore.list();
       this.lastContentFocus = null;
       this.contentScrollTop = 0;
@@ -210,7 +221,7 @@ export function createSearchScreenMethods01() {
       this.posterOptionsController = null;
       this.pendingPosterOptionsFocusId = "";
       this.pendingPosterHoldTarget = null;
-      this.pendingPosterHoldTimer = null;
+      this.pendingPosterHoldActive = null;
       this.hydrateFromRouteState(navigationContext?.restoredState || null, params);
       if (!navigationContext?.isBackNavigation) {
         this.focusZone = "content";
@@ -221,12 +232,14 @@ export function createSearchScreenMethods01() {
       this.loadToken = (this.loadToken || 0) + 1;
       this.cancelActiveSearchRequests();
       const routeLoadToken = this.loadToken;
-      const watchedTitleIdsPromise = this.refreshWatchedTitleIds();
       const hasExplicitQuery = Boolean(String(params.query || "").trim());
       const restoredQuery = String(navigationContext?.restoredState?.query || "").trim();
       const shouldUseRestoredState = Boolean(
         navigationContext?.restoredState && (!hasExplicitQuery || restoredQuery === String(params.query || "").trim())
       );
+      // Fresh catalogs must not wait behind watched-history IO. reloadRows will
+      // project badges against the returned items; restored rows need a refresh now.
+      const watchedTitleIdsPromise = shouldUseRestoredState ? this.refreshWatchedTitleIds() : Promise.resolve(false);
       // Android composes the search surface before catalog and watched-state IO
       // completes. Paint the Smart TV shell now so the native input and sidebar
       // remain usable while the row request runs in the background.
@@ -306,10 +319,12 @@ export function createSearchScreenMethods01() {
         rows = [];
       }
       if (token !== this.loadToken) return;
+      const rowsChanged =
+        this.resultsQuery !== query || this.rows?.length !== rows.length || rows.some((row, index) => row !== this.rows[index]);
       this.rows = rows;
       this.resultsQuery = query;
-      void this.refreshWatchedTitleIds().then(() => {
-        if (token === this.loadToken && Router.getCurrent() === "search") {
+      void this.refreshWatchedTitleIds().then((changed) => {
+        if (changed && token === this.loadToken && Router.getCurrent() === "search") {
           if (this.shouldPatchResultsWithoutReplacingInput()) {
             this.renderResultsOnly();
             return;
@@ -317,16 +332,50 @@ export function createSearchScreenMethods01() {
           this.requestRender();
         }
       });
+      if (!rowsChanged && !this.pendingAutoFocusResults) return;
       if (this.shouldPatchResultsWithoutReplacingInput()) {
         this.renderResultsOnly();
         return;
       }
       this.requestRender();
     },
+    rememberRenderedSearchRows() {
+      const content = this.container?.querySelector(".search-content");
+      rememberSearchRows(
+        content,
+        this.rows || [],
+        this.watchedTitleIds,
+        this.layoutPrefs,
+        (row, index) => row.stateKey || buildRowStateKey(row, index)
+      );
+      this.searchRenderedShellState = [
+        this.layoutPrefs,
+        this.sidebarProfile,
+        this.sidebarExpanded,
+        this.pillIconOnly,
+        this.voiceSearchActive,
+        this.voiceSearchSupported
+      ];
+    },
+    canPatchSearchShell() {
+      const state = [
+        this.layoutPrefs,
+        this.sidebarProfile,
+        this.sidebarExpanded,
+        this.pillIconOnly,
+        this.voiceSearchActive,
+        this.voiceSearchSupported
+      ];
+      return (
+        this.searchRenderedShellState?.every((value, index) => value === state[index]) &&
+        Boolean(this.container?.querySelector(".search-header")) &&
+        Boolean(this.container?.querySelector(".search-content")?.querySelector)
+      );
+    },
     shouldPatchResultsWithoutReplacingInput() {
       return this.isSearchInputEditingActive() && !this.pendingAutoFocusResults;
     },
-    renderResultsOnly() {
+    renderResultsOnly({ preserveResultsFocus = false } = {}) {
       const content = this.container?.querySelector(".search-content");
       const header = content?.querySelector(".search-header");
       const input = this.container?.querySelector("#searchInput");
@@ -338,10 +387,38 @@ export function createSearchScreenMethods01() {
         document.activeElement === input || Boolean(this.imeDismissed && this.container?.querySelector(".focusable.focused") === input);
       const selectionSnapshot = preserveInputEditing ? null : getInputSelectionSnapshot(input);
 
-      while (header.nextSibling) {
-        header.nextSibling.remove();
+      const focused = this.container.querySelector(".focusable.focused");
+      const keepResultFocus = preserveResultsFocus && focused?.closest?.(".search-results-row");
+      const previousTop = keepResultFocus ? focused.getBoundingClientRect().top : null;
+      if (
+        !patchSearchRows({
+          content,
+          header,
+          rows: this.rows || [],
+          watched: this.watchedTitleIds,
+          prefs: this.layoutPrefs,
+          getKey: (row, index) => row.stateKey || buildRowStateKey(row, index),
+          renderRow: (row, index) => this.renderRows([row], index),
+          updateWatched: (node, row, watched) => {
+            const items = new Map((row.items || []).map((item) => [String(item.id || ""), item]));
+            node.querySelectorAll(".search-result-card[data-item-id]").forEach((card) => {
+              const item = items.get(String(card.dataset.itemId || ""));
+              const wrap = card.querySelector(".search-result-poster-wrap");
+              if (!item || !wrap) return;
+              const badge = wrap.querySelector(".title-watched-badge");
+              const isWatched = isTitleItemWatched(item, watched);
+              if (isWatched && !badge) wrap.insertAdjacentHTML("beforeend", renderTitleWatchedBadge());
+              else if (!isWatched && badge) badge.remove();
+            });
+          }
+        })
+      ) {
+        while (header.nextSibling) header.nextSibling.remove();
+        content.insertAdjacentHTML("beforeend", this.renderRows());
       }
-      content.insertAdjacentHTML("beforeend", this.renderRows());
+      if (keepResultFocus && focused.isConnected) {
+        content.scrollTop += focused.getBoundingClientRect().top - previousTop;
+      }
       ScreenUtils.indexFocusables(this.container);
       this.buildNavigationModel();
       this.bindActionEvents();
@@ -350,7 +427,15 @@ export function createSearchScreenMethods01() {
       // that the user has just entered and is still editing.
       // Re-focusing an input that is already being edited can interrupt the TV IME
       // composition even though this results-only update leaves the input in place.
-      if (!preserveInputEditing) {
+      if (preserveResultsFocus) {
+        if (focused?.isConnected && !this.pendingAutoFocusResults) {
+          this.rememberContentFocus(focused);
+        } else if (this.focusZone === "sidebar") {
+          this.focusSidebarNode();
+        } else {
+          this.restoreContentFocus(Boolean(this.pendingAutoFocusResults && this.navModel?.rows?.[0]?.[0]));
+        }
+      } else if (!preserveInputEditing) {
         input.focus?.();
         this.focusNode(this.container?.querySelector(".focusable.focused") || null, input);
         restoreInputSelection(input, selectionSnapshot);

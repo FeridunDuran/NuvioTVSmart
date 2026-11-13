@@ -255,6 +255,7 @@ export function createPlayerScreenMethods29() {
     setControlsVisible(visible, { focus = false } = {}) {
       const wasControlsVisible = this.controlsVisible;
       this.controlsVisible = Boolean(visible);
+      this.syncTorrentOverlay?.();
       if (this.controlsVisible) {
         this.controlsHideUntil = 0;
       } else if (wasControlsVisible) {

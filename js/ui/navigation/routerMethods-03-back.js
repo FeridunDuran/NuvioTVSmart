@@ -19,6 +19,18 @@ export function createRouterMethods03() {
         return;
       }
 
+      // Slow mounts may still leave the caller's browser history entry active.
+      // Return to it immediately instead of waiting or traversing past it.
+      if (
+        !options?.skipHistory &&
+        this.pendingMountParams &&
+        window?.history?.state?.route &&
+        window.history.state.route !== this.current
+      ) {
+        await this.backFromPendingNavigation();
+        return;
+      }
+
       if (this.current === "home") {
         Platform.exitApp();
         return;

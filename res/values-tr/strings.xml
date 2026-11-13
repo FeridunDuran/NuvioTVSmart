@@ -3394,4 +3394,8 @@
     <string name="stream_test_label_parallel16">Paralel Bağlantı (16 MB Parçalar)</string>
     <string name="stream_test_error_connection">Bağlantı başarısız. Son oynatılan video linkinin süresi dolmuş veya sunucuya erişilemiyor olabilir. Lütfen videoyu tekrar oynatıp testi yeniden deneyin.</string>
     <string name="settings_p2p_cache_unsupported">Not available on this TV.</string>
+    <string name="exit_app_title">Nuvio kapatılsın mı?</string>
+    <string name="exit_app_message">Uygulamadan çıkmak istediğinize emin misiniz?</string>
+    <string name="exit_app_cancel">Vazgeç</string>
+    <string name="exit_app_confirm">Çık</string>
 </resources>

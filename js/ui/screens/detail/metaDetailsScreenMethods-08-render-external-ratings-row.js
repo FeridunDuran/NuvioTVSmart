@@ -139,6 +139,20 @@ export function createMetaDetailsScreenMethods08() {
       ScreenUtils.indexFocusables(this.container);
       ScreenUtils.setInitialFocus(this.container);
     },
+    scheduleDetailChromeBinding() {
+      const pending = this.detailChromeBindPending;
+      if (pending && pending.token === this.detailLoadToken) return;
+      const job = { token: this.detailLoadToken };
+      this.detailChromeBindPending = job;
+      requestAnimationFrame(() =>
+        setTimeout(() => {
+          if (this.detailChromeBindPending !== job) return;
+          this.detailChromeBindPending = null;
+          if (job.token !== this.detailLoadToken || !this.container || !this.container.querySelector(".series-detail-shell")) return;
+          this.bindDetailChrome();
+        }, 0)
+      );
+    },
     renderMovieLayout(meta) {
       const backdrop = resolveDetailBackdropUrl(meta);
       const heroMarkup = this.renderMovieHeroMarkup(meta);
@@ -173,7 +187,7 @@ export function createMetaDetailsScreenMethods08() {
       this._detailInsightMarkup = insightMarkup;
       this._detailCommentsMarkup = commentsMarkup;
       this._detailCompanyMarkup = companyMarkup;
-      this.bindDetailChrome();
+      this.scheduleDetailChromeBinding();
     },
     captureRenderedChromeState() {
       const content = this.getDetailContentScroller();
@@ -296,7 +310,7 @@ export function createMetaDetailsScreenMethods08() {
 
       ScreenUtils.indexFocusables(this.container);
       this.pendingFocusRestore = focusRestore;
-      this.bindDetailChrome();
+      this.scheduleDetailChromeBinding();
       this.scheduleEpisodeVirtualizationSync(this.getRememberedEpisodeIndex());
     },
     renderMovieInsightSection(meta) {

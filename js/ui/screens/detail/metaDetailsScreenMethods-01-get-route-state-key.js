@@ -20,6 +20,8 @@ export function createMetaDetailsScreenMethods01() {
       return `detail:${String(params?.itemType || "movie").trim() || "movie"}:${itemId}`;
     },
     captureRouteState() {
+      // A provisional preview must never become a complete Back snapshot.
+      if (this.detailStatePending) return null;
       const content = this.container?.querySelector(".series-detail-content");
       return {
         params: this.params ? { ...this.params } : {},

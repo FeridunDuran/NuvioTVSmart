@@ -86,9 +86,8 @@ export function createLibraryScreenMethods04() {
       return Boolean(node?.matches?.(".library-grid-card.focusable[data-action='openDetail']"));
     },
     cancelPendingPosterHold() {
-      if (this.pendingPosterHoldTimer) {
-        clearTimeout(this.pendingPosterHoldTimer);
-        this.pendingPosterHoldTimer = null;
+      if (this.pendingPosterHoldActive) {
+        this.pendingPosterHoldActive = null;
       }
       this.pendingPosterHoldTarget = null;
     },
@@ -107,20 +106,9 @@ export function createLibraryScreenMethods04() {
       this.pendingPosterHoldTarget = {
         focusKey: String(node.dataset.focusKey || "")
       };
-      this.pendingPosterHoldTimer = setTimeout(() => {
-        // Personal build: a short grace period before opening the options menu. When the
-        // TV stalls during a normal click, this timer and the key release are both queued;
-        // without the grace the timer ran first and a click opened "title options".
-        this.pendingPosterHoldTimer = setTimeout(() => {
-          this.pendingPosterHoldTimer = null;
-          const current = this.container?.querySelector(".library-grid-card.focusable.focused[data-action='openDetail']") || null;
-          if (!this.hasPendingPosterHold(current)) {
-            return;
-          }
-          this.pendingPosterHoldTarget.holdTriggered = true;
-          void this.openPosterOptionsMenu(current);
-        }, 80);
-      }, POSTER_HOLD_DELAY_MS);
+      // Decide on release using the physical key event duration. A delayed
+      // JS timer can run before a queued short keyup and must never open a menu.
+      this.pendingPosterHoldActive = true;
       return true;
     },
     completePendingPosterHold(node, event = null) {
@@ -265,7 +253,7 @@ export function createLibraryScreenMethods04() {
         selector = ".library-cloud-search-input.focusable";
       } else if (this.lastMainFocus?.matches?.(".library-picker-anchor")) {
         selector = this.getMainFocusSelector(this.lastMainFocus);
-      } else if (this.lastMainFocus?.dataset?.action) {
+      } else if (this.lastMainFocus?.dataset?.action && !this.lastMainFocus.dataset.focusKey) {
         selector = this.getMainFocusSelector(this.lastMainFocus);
       } else if (state.lastFocusedPosterKey) {
         selector = `.library-grid-card[data-focus-key="${selectorValue(state.lastFocusedPosterKey)}"]`;

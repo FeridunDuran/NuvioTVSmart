@@ -25,12 +25,7 @@ export function createHomeScreenMethods02() {
         return false;
       }
 
-      Object.entries(focusState.trackStates || {}).forEach(([rowKey, scrollLeft]) => {
-        const track = this.getNavigationTrackNodes().find((node) => String(node.dataset.trackRowKey || "") === String(rowKey || ""));
-        if (track) {
-          track.scrollLeft = Number(scrollLeft || 0);
-        }
-      });
+      this.restoreHomeTrackOffsets(focusState.trackStates);
 
       const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
       viewport.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(focusState.mainScrollTop || 0)));
@@ -71,12 +66,7 @@ export function createHomeScreenMethods02() {
         return false;
       }
 
-      Object.entries(focusState.trackStates || {}).forEach(([rowKey, scrollLeft]) => {
-        const track = this.getNavigationTrackNodes().find((node) => String(node.dataset.trackRowKey || "") === String(rowKey || ""));
-        if (track) {
-          track.scrollLeft = Number(scrollLeft || 0);
-        }
-      });
+      this.restoreHomeTrackOffsets(focusState.trackStates);
 
       const maxScrollTop = Math.max(0, main.scrollHeight - main.clientHeight);
       main.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(focusState.mainScrollTop || 0)));

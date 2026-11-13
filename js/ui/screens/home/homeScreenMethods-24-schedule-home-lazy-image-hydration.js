@@ -87,8 +87,17 @@ export function createHomeScreenMethods24() {
       } else {
         this.homeLazyImageHydrationNeedsFullScan = true;
       }
-      this.pendingHomeLazyImageFocusedRowOnly = legacyFocusedRowPass;
-      this.pendingHomeLazyImageIncludeNeighborRows = Boolean(includeNeighborRows || (this.isLegacyTvRuntime() && !legacyFocusedRowPass));
+      const hasPendingHydration = Boolean(this.homeLazyImageHydrationRaf || this.homeLazyImageHydrationSettleTimer);
+      // Coalescing may broaden a queued pass, but a later focus event must not
+      // discard an earlier request to hydrate neighboring rows.
+      this.pendingHomeLazyImageFocusedRowOnly = hasPendingHydration
+        ? Boolean(this.pendingHomeLazyImageFocusedRowOnly && legacyFocusedRowPass)
+        : legacyFocusedRowPass;
+      this.pendingHomeLazyImageIncludeNeighborRows = Boolean(
+        (hasPendingHydration && this.pendingHomeLazyImageIncludeNeighborRows) ||
+        includeNeighborRows ||
+        (this.isLegacyTvRuntime() && !legacyFocusedRowPass)
+      );
       if (refreshIndex) {
         this.homeLazyImageHydrationNeedsIndexRefresh = true;
       }
@@ -103,20 +112,31 @@ export function createHomeScreenMethods24() {
       // poster decodes while the spring was still running, which is the same
       // decode burst the immediate-scroll policy already avoided.
       if (deferUntilVerticalSettle && !legacyFocusedRowPass && this.shouldUseBoundedHomeImageHydration() && this.layoutMode === "modern") {
+        if (this.homeLazyImageHydrationRaf) {
+          cancelAnimationFrame(this.homeLazyImageHydrationRaf);
+          this.homeLazyImageHydrationRaf = 0;
+        }
         if (this.homeLazyImageHydrationSettleTimer) {
           clearTimeout(this.homeLazyImageHydrationSettleTimer);
         }
         const target = anchorNode instanceof HTMLElement ? anchorNode : null;
+        const container = this.container;
+        const loadToken = this.homeLoadToken;
         const hydrationDelayMs = this.shouldUseImmediateFocusScroll()
           ? MODERN_HOME_CONSTANTS.smartTvLazyHydrationDebounceMs
           : MODERN_HOME_CONSTANTS.verticalScrollSettlePollMs;
         const retryAfterVerticalSettle = () => {
           this.homeLazyImageHydrationSettleTimer = null;
+          if (this.container !== container || this.homeLoadToken !== loadToken || Router.getCurrent() !== "home") return;
           if (this.isModernHydrationScrollActive()) {
             this.homeLazyImageHydrationSettleTimer = setTimeout(retryAfterVerticalSettle, MODERN_HOME_CONSTANTS.verticalScrollSettlePollMs);
             return;
           }
-          this.scheduleHomeLazyImageHydration(target, { refreshIndex });
+          this.scheduleHomeLazyImageHydration(target, {
+            refreshIndex,
+            focusedRowOnly: this.pendingHomeLazyImageFocusedRowOnly,
+            includeNeighborRows: this.pendingHomeLazyImageIncludeNeighborRows
+          });
         };
         this.homeLazyImageHydrationSettleTimer = setTimeout(retryAfterVerticalSettle, hydrationDelayMs);
         return;
@@ -415,6 +435,7 @@ export function createHomeScreenMethods24() {
       const margin = getArtworkEvictMarginPx(getTvRuntimePerformanceProfile(), getDeviceMemoryGb());
       const anchorRow = anchorNode?.closest?.(HOME_LAZY_IMAGE_ROW_SELECTOR) || null;
       let released = 0;
+      const distantEntries = [];
       // Measure rows, never individual images. A full per-image sweep measured
       // 67ms for 1009 images on an LG k8lp, which would land on every vertical
       // move; the row count stays small and a row's images share its band.
@@ -433,10 +454,14 @@ export function createHomeScreenMethods24() {
         if (gap <= margin) {
           return;
         }
+        distantEntries.push(entry);
+      });
+      // Finish every geometry read before removing image sources.
+      distantEntries.forEach((entry) =>
         (entry.images || []).forEach((image) => {
           released += this.releaseHomeLazyImage(image) ? 1 : 0;
-        });
-      });
+        })
+      );
       return released;
     },
     releaseHomeLazyImage(image) {

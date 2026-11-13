@@ -382,9 +382,17 @@ async function stagePackage({
     await cp(path.join(distDir, "nuvio.env.js"), path.join(stagingDir, "nuvio.env.js"));
   }
 
-  if (await pathExists(path.join(distDir, "app.bundle.js.map"))) {
-    await cp(path.join(distDir, "app.bundle.js.map"), path.join(stagingDir, "app.bundle.js.map"));
-  }
+  const profilePath = path.join(distDir, "build-profile.json");
+  if (!(await pathExists(profilePath)))
+    throw new Error("Build profile missing; rebuild before packaging the Q70T target.");
+  const profile = JSON.parse(await readFile(profilePath, "utf8"));
+  if (
+    profile.profile !== compatibilityPolicy.buildProfile ||
+    profile.chromiumTarget !== compatibilityPolicy.chromiumVersion
+  )
+    throw new Error("Build/package target mismatch; run npm run build again.");
+  await cp(profilePath, path.join(stagingDir, "build-profile.json"));
+  // Source maps are intentionally excluded from the TV package.
 }
 
 async function addDirectoryToZip(zip, dir, baseDir = dir) {
@@ -416,7 +424,9 @@ function parseArgs(argv) {
     includeEngineFsService:
       configuredIncludeService == null ? true : isTruthy(configuredIncludeService),
     includePluginService:
-      configuredIncludePluginService == null ? true : isTruthy(configuredIncludePluginService),
+      configuredIncludePluginService == null
+        ? compatibilityPolicy.includeTizenPluginService !== false
+        : isTruthy(configuredIncludePluginService),
     signingProfile: process.env.TIZEN_SECURITY_PROFILE || "",
     tizenCli: process.env.TIZEN_CLI || "tizen",
     serviceMetadataXml: String(process.env.TIZEN_SERVICE_METADATA_XML || "").trim()

@@ -37,9 +37,8 @@ export function createHomeScreenMethods08() {
       return Boolean(node?.matches?.(".home-continue-card.focusable"));
     },
     cancelPendingContinueWatchingHold() {
-      if (this.pendingContinueWatchingHoldTimer) {
-        clearTimeout(this.pendingContinueWatchingHoldTimer);
-        this.pendingContinueWatchingHoldTimer = null;
+      if (this.pendingContinueWatchingHoldActive) {
+        this.pendingContinueWatchingHoldActive = null;
       }
       this.pendingContinueWatchingHoldTarget = null;
     },
@@ -85,25 +84,9 @@ export function createHomeScreenMethods08() {
         episode: String(isPoster ? "" : (item.episode ?? "")),
         holdTriggered: false
       };
-      this.pendingContinueWatchingHoldTimer = setTimeout(() => {
-        // Personal build: a short grace period before opening the options menu. When the
-        // TV stalls during a normal click, this timer and the key release are both queued;
-        // without the grace the timer ran first and a click opened "title options".
-        this.pendingContinueWatchingHoldTimer = setTimeout(() => {
-          this.pendingContinueWatchingHoldTimer = null;
-          const pending = this.pendingContinueWatchingHoldTarget;
-          if (!pending || Router.getCurrent() !== "home") {
-            return;
-          }
-          const current =
-            this.container?.querySelector(".home-continue-card.focusable.focused, .home-poster-card.focusable.focused") || null;
-          if (!this.hasPendingContinueWatchingHold(current)) {
-            return;
-          }
-          pending.holdTriggered = true;
-          this.openHoldMenuForNode(current);
-        }, 80);
-      }, CW_HOLD_DELAY_MS);
+      // Decide on release using the physical key event duration. A delayed
+      // JS timer can run before a queued short keyup and must never open a menu.
+      this.pendingContinueWatchingHoldActive = true;
       return true;
     },
     completePendingContinueWatchingHold(node, event = null) {

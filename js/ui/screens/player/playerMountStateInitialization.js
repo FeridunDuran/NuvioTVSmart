@@ -363,6 +363,7 @@ export function initializePlayerMountState(params, initialStreamUrl) {
   this.loadingTorrentStatus = "";
   this.torrentOverlayData = null;
   this.loadingProgressRefreshInFlight = false;
+  this.loadingProgressLastPoll = null;
   this.seekLoading = false;
   this.seekLoadingBaselineSeconds = null;
   this.seekLoadingTargetSeconds = null;

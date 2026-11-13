@@ -155,6 +155,58 @@ try {
   assert.equal(fallback.startMethod, "tizen-application-launch");
   assert.equal(applicationLaunchCalls, 1);
 
+  // An acknowledged launch that never answers must not suppress later launchers.
+  // Advance only the startup clock so failed health windows finish quickly.
+  resetState();
+  const originalNow = Date.now;
+  const normalFetch = globalThis.fetch;
+  let clock = originalNow();
+  Date.now = () => clock;
+  globalThis.fetch = async (...args) => {
+    if (!serviceStarted) clock += 10000;
+    return normalFetch(...args);
+  };
+  globalThis.__NUVIO_TIZEN_WRT_SERVICE__ = {
+    startService(_id, onSuccess) {
+      bridgeStartCalls += 1;
+      onSuccess();
+    }
+  };
+  globalThis.tizen.application.launch = (_id, onSuccess) => {
+    applicationLaunchCalls += 1;
+    onSuccess();
+  };
+  try {
+    const recovered = await TizenEngineFsService.ensureStarted({ purpose: "p2p" });
+    assert.equal(recovered.status, "success");
+    assert.equal(recovered.startMethod, "tizen-application-control-default");
+    assert.equal(bridgeStartCalls, 1);
+    assert.equal(applicationLaunchCalls, 1);
+    assert.equal(applicationControlCalls, 1);
+
+    // Rejected launchers must also be remembered across health-check rounds.
+    resetState();
+    globalThis.__NUVIO_TIZEN_WRT_SERVICE__ = {
+      startService() {
+        bridgeStartCalls += 1;
+        throw new Error("bridge rejected");
+      }
+    };
+    globalThis.tizen.application.launch = (_id, onSuccess) => {
+      applicationLaunchCalls += 1;
+      onSuccess();
+    };
+    const rejectedBridge = await TizenEngineFsService.ensureStarted({ purpose: "p2p" });
+    assert.equal(rejectedBridge.status, "success");
+    assert.equal(rejectedBridge.startMethod, "tizen-application-control-default");
+    assert.equal(bridgeStartCalls, 2); // string/object variants, once each
+    assert.equal(applicationLaunchCalls, 1);
+    assert.equal(applicationControlCalls, 1);
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = normalFetch;
+  }
+
   // A TV that reports the capability true keeps the official start order.
   resetState({ webService: true, launchAvailable: true });
   const official = await TizenEngineFsService.ensureStarted({ purpose: "subtitle" });

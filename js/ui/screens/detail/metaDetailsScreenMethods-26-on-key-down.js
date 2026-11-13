@@ -361,9 +361,14 @@ export function createMetaDetailsScreenMethods26() {
       }
 
       if (action === "toggleWatched") {
+        this.detailPlaybackMutationToken = (this.detailPlaybackMutationToken || 0) + 1;
         const profileId = ProfileManager.getActiveProfileId();
         const token = this.detailLoadToken;
         const current = () => ProfileManager.getActiveProfileId() === profileId && this.detailLoadToken === token;
+        // Resolve just this action's state, without locking navigation or Play.
+        const watched = await watchedItemsRepository.isWatched(this.params?.itemId).catch(() => this.isMarkedWatched);
+        if (!current()) return false;
+        this.isMarkedWatched = Boolean(watched);
         const focusRestore = this.captureDetailFocus();
         const isSeries = isSeriesDetailMeta(this.meta, this.episodes);
         if (isSeries) {

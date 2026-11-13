@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { patchSearchRows, rememberSearchRows } from "../js/ui/screens/search/searchRowsDom.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,10 +16,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function loadFactory(relPath, factoryName, internals, globals = {}) {
   const source = readFileSync(path.join(ROOT, relPath), "utf8")
-    .replace(/^import \* as internals from .*$/m, "")
+    .replace(/^import .*$/gm, "")
     .replace(/^export function/m, "function");
   const sandbox = {
     internals,
+    patchSearchRows,
+    rememberSearchRows,
     console,
     Date,
     Number,

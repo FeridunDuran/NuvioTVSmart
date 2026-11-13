@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { rememberSearchRows } from "../js/ui/screens/search/searchRowsDom.js";
 
 const fixtures = {
   trimLeadingWhitespace: (value) => value.trimStart(),
@@ -12,7 +13,8 @@ const fixtures = {
   Router: { getCurrent: () => "search" },
   t: (_key, _params, fallback) => fallback
 };
-const context = vm.createContext({ fixtures, setTimeout, clearTimeout });
+const context = vm.createContext({ fixtures, setTimeout, clearTimeout, rememberSearchRows });
+vm.runInContext("var internals = fixtures", context);
 const methods = {};
 for (const [number, name] of [
   [1, "get-route-state-key"],
@@ -26,7 +28,7 @@ for (const [number, name] of [
   );
   vm.runInContext(
     source
-      .replace(/^import .*;$/m, "const internals = fixtures;")
+      .replace(/^import .*;$/gm, "")
       .replace("export function", "function")
       .replace("const internals = fixtures;", `var internals = fixtures;`),
     context

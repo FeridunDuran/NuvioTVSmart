@@ -197,27 +197,54 @@ class MetaRepository {
         });
       }
 
-      for (const { addon, type: candidateType } of candidates) {
-        // Android treats the catalog/source addon as sufficient for a
-        // recommendation candidate: it uses the candidate preview metadata
-        // instead of issuing a second detail request to that same addon.
-        if (
-          normalizedSourceUrl &&
-          addonRepository.canonicalizeUrl(addon.baseUrl) === normalizedSourceUrl
-        ) {
-          return {
-            status: "source-sufficient",
-            message: "Source addon metadata is sufficient"
-          };
-        }
-        const result = await this.getMeta(addon.baseUrl, candidateType, id);
-        if (result.status === "success") {
-          this.metaCache.set(cacheKey, result.data);
-          return result;
-        }
-      }
+      // Preserve the source-sufficient boundary used by recommendations.
+      const sourceIndex = normalizedSourceUrl
+        ? candidates.findIndex(
+            ({ addon }) => addonRepository.canonicalizeUrl(addon.baseUrl) === normalizedSourceUrl
+          )
+        : -1;
+      const probes = sourceIndex >= 0 ? candidates.slice(0, sourceIndex) : candidates;
+      const notFound = () =>
+        sourceIndex >= 0
+          ? { status: "source-sufficient", message: "Source addon metadata is sufficient" }
+          : { status: "error", message: "Meta not found in installed addons", code: 404 };
+      if (!probes.length) return notFound();
 
-      return { status: "error", message: "Meta not found in installed addons", code: 404 };
+      // Give the preferred owner a head start, then hedge with one other
+      // request. Never fan out to all installed addons at once.
+      return new Promise((resolve) => {
+        let nextIndex = 0;
+        let active = 0;
+        let settled = false;
+        let hedgeTimer = null;
+        const probe = () => {
+          if (settled || nextIndex >= probes.length || active >= 2) return;
+          const { addon, type: candidateType } = probes[nextIndex++];
+          active += 1;
+          Promise.resolve()
+            .then(() => this.getMeta(addon.baseUrl, candidateType, id))
+            .catch(() => ({ status: "error" }))
+            .then((result) => {
+              active -= 1;
+              if (settled) return;
+              if (result.status === "success") {
+                settled = true;
+                clearTimeout(hedgeTimer);
+                this.metaCache.set(cacheKey, result.data);
+                resolve(result);
+                return;
+              }
+              if (nextIndex < probes.length) probe();
+              else if (!active) {
+                settled = true;
+                clearTimeout(hedgeTimer);
+                resolve(notFound());
+              }
+            });
+        };
+        hedgeTimer = setTimeout(probe, 350);
+        probe();
+      });
     })();
 
     this.inFlightMetaAll.set(cacheKey, request);
