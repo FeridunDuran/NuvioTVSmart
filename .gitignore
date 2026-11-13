@@ -19,3 +19,6 @@ scripts/commit-build-poller.mjs
 store-assets/
 .claude/
 .DS_Store
+
+# Local TV test evidence (may contain env values); never commit
+artifacts/

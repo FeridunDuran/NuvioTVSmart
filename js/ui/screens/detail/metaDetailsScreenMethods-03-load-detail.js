@@ -318,6 +318,7 @@ export function createMetaDetailsScreenMethods03() {
         }
         const currentProgressItemsForDetail = this.resumeProgress ? [this.resumeProgress, ...currentProgressItems] : currentProgressItems;
         this.meta = fillMissingDetailFields(enrichedMeta || meta, this.meta);
+        this.scheduleStreamPrewarm?.();
         this.episodes = normalizeEpisodes(this.meta?.videos || [], this.meta?.type || this.params?.itemType);
         this.castItems = extractCast(this.meta);
         this.buildEpisodeState(currentProgressItemsForDetail, currentWatchedItems, this.enrichedWatchedState);

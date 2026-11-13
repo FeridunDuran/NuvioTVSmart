@@ -1,10 +1,51 @@
 /* eslint-disable no-unused-vars */
 import * as internals from "./metaDetailsScreenContext.js";
+import { streamRepository } from "../../../data/repository/streamRepository.js";
+
+// Personal build: source prewarm, adapted from the idea in Litefin's PrewarmManager
+// (https://github.com/MoazSalem/litefin, MPL-2.0; idea only, no code copied).
+// When a movie detail page stays open for a moment, the full source search starts in the
+// background. The stream screen builds the same request key, so it joins the in-flight
+// search (or the 15 min completed cache) instead of starting from zero.
+const STREAM_PREWARM_DELAY_MS = 1500;
 
 export function createMetaDetailsScreenMethods27() {
-  const { ScreenUtils, buildYoutubeEmbedUrl } = internals;
+  const { ScreenUtils, buildYoutubeEmbedUrl, Router, resolvePlayableDetailType, resolveMovieStreamIdentity } = internals;
 
   return {
+    scheduleStreamPrewarm() {
+      if (this.streamPrewarmTimer) {
+        clearTimeout(this.streamPrewarmTimer);
+      }
+      const token = this.detailLoadToken;
+      this.streamPrewarmTimer = setTimeout(() => {
+        this.streamPrewarmTimer = null;
+        if (token !== this.detailLoadToken || Router.getCurrent() !== "detail" || !this.meta) {
+          return;
+        }
+        const itemType = resolvePlayableDetailType(this.params?.itemType || this.meta?.type, this.meta);
+        if (itemType !== "movie") {
+          return;
+        }
+        const { itemId, videoId } = resolveMovieStreamIdentity(this.meta, this.params);
+        if (!videoId) {
+          return;
+        }
+        const key = `${itemType}:${videoId}`;
+        if (this.streamPrewarmKey === key) {
+          return;
+        }
+        this.streamPrewarmKey = key;
+        // Same options shape as the stream screen's request (itemId, season, episode).
+        void streamRepository
+          .getStreamsFromAllAddons(itemType, videoId, {
+            itemId: String(itemId || ""),
+            season: null,
+            episode: null
+          })
+          .catch(() => {});
+      }, STREAM_PREWARM_DELAY_MS);
+    },
     onPointerMove() {
       if (this.isTrailerPlaying && this.trailerPlaybackMode === "manual") {
         this.restartTrailerControlsTimer();
@@ -84,6 +125,11 @@ export function createMetaDetailsScreenMethods27() {
       }
     },
     cleanup() {
+      if (this.streamPrewarmTimer) {
+        clearTimeout(this.streamPrewarmTimer);
+        this.streamPrewarmTimer = null;
+      }
+      this.streamPrewarmKey = null;
       this.synopsisDialog?.destroy();
       this.synopsisDialog = null;
       this.shuffleDialog?.destroy();
