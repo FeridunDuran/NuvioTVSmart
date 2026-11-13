@@ -16,7 +16,8 @@ export function createHomeScreenMethods11() {
     withTimeout,
     fetchModernHeroTmdbEnrichment,
     buildHeroIdentity,
-    buildModernHeroPresentation
+    buildModernHeroPresentation,
+    shouldEnrichModernHero
   } = internals;
 
   return {
@@ -27,9 +28,18 @@ export function createHomeScreenMethods11() {
       const itemId = String(hero.id);
       const itemType = String(hero.type || hero.apiType || "movie");
       const heroIdentity = buildHeroIdentity(hero);
-      const deferCommit = Boolean(options?.deferCommit);
-      const token = (this.heroEnrichmentToken = Number(this.heroEnrichmentToken || 0) + 1);
+      // Personal build: prefetchOnly enriches a neighbouring card in the background. It does
+      // not touch the focused hero (no token bump, no DOM); the result is merged into the
+      // catalog state so focusing that card later renders logo and rating in the first paint.
+      const prefetchOnly = Boolean(options?.prefetchOnly);
+      const deferCommit = prefetchOnly || Boolean(options?.deferCommit);
+      const token = prefetchOnly
+        ? Number(this.heroEnrichmentToken || 0)
+        : (this.heroEnrichmentToken = Number(this.heroEnrichmentToken || 0) + 1);
       const canCommitHero = () => {
+        if (prefetchOnly) {
+          return Router.getCurrent() === "home" && !options?.isCancelled?.();
+        }
         if (Number(this.heroEnrichmentToken) !== token) {
           return false;
         }
@@ -52,6 +62,10 @@ export function createHomeScreenMethods11() {
         }
         if (!canCommitHero()) {
           return false;
+        }
+        if (prefetchOnly) {
+          this.mergeHeroIntoCatalogState(itemId, { ...resolvedHero, heroMetaEnriching: false });
+          return true;
         }
         this.heroItem = resolvedHero;
         const matchedIndex = (this.heroCandidates || []).findIndex((item) => String(item?.id || "") === itemId);
@@ -184,6 +198,62 @@ export function createHomeScreenMethods11() {
             .catch(() => {});
         }
       }
+    },
+    cancelHeroNeighborPrefetch() {
+      if (this.heroNeighborPrefetchTimer) {
+        clearTimeout(this.heroNeighborPrefetchTimer);
+        this.heroNeighborPrefetchTimer = null;
+      }
+      this.heroNeighborPrefetchGeneration = Number(this.heroNeighborPrefetchGeneration || 0) + 1;
+    },
+    // Personal build: while focus rests on a card, enrich the next cards in the same row (and
+    // the one before) one at a time, so moving on shows their logo and rating at once.
+    scheduleHeroNeighborPrefetch(node) {
+      this.cancelHeroNeighborPrefetch();
+      const generation = this.heroNeighborPrefetchGeneration;
+      const isCancelled = () => generation !== this.heroNeighborPrefetchGeneration;
+      this.heroNeighborPrefetchTimer = setTimeout(async () => {
+        this.heroNeighborPrefetchTimer = null;
+        const track = node?.closest?.(".home-track, .home-grid-track");
+        if (!track || isCancelled()) {
+          return;
+        }
+        const cards = Array.from(track.querySelectorAll(".focusable"));
+        const index = cards.indexOf(node);
+        if (index < 0) {
+          return;
+        }
+        // Same-position cards in the rows above and below cover vertical moves.
+        const tracks = Array.from(this.container?.querySelectorAll?.(".home-track, .home-grid-track") || []);
+        const trackIndex = tracks.indexOf(track);
+        const verticalCard = (otherTrack) => {
+          if (!otherTrack) return null;
+          const otherCards = otherTrack.querySelectorAll(".focusable");
+          return otherCards.length ? otherCards[Math.min(index, otherCards.length - 1)] : null;
+        };
+        const neighbours = [
+          cards[index + 1],
+          verticalCard(tracks[trackIndex + 1]),
+          cards[index + 2],
+          cards[index - 1],
+          verticalCard(tracks[trackIndex - 1]),
+          cards[index + 3]
+        ].filter(Boolean);
+        for (const neighbour of neighbours) {
+          if (isCancelled()) {
+            return;
+          }
+          const hero = this.getNodeHeroSource(neighbour);
+          if (!hero?.id || hero.heroMetaEnriched || !shouldEnrichModernHero(hero)) {
+            continue;
+          }
+          try {
+            await this.enrichCurrentHeroAsync(hero, 0, { prefetchOnly: true, isCancelled });
+          } catch (_) {
+            // Prefetch is best effort.
+          }
+        }
+      }, 400);
     },
     mergeHeroIntoCatalogState(itemId, mergedHero) {
       this.heroCandidates = (this.heroCandidates || []).map((item) => {

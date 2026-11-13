@@ -1,6 +1,7 @@
 import * as internals from "./homeScreenContext.js";
 import { getHeroEnrichDwellMs, isModernTvProfile } from "../../../platform/tvPerformancePolicy.js";
 import { getTvRuntimePerformanceProfile } from "../../../platform/tvRuntimePerformance.js";
+import { markHeroFocus } from "../../../core/diagnostics/lagMonitor.js";
 
 export function createHomeScreenMethods10() {
   const { MODERN_HOME_CONSTANTS, shouldEnrichModernHero, preloadHeroAssets, buildHeroIdentity } = internals;
@@ -22,6 +23,8 @@ export function createHomeScreenMethods10() {
         return;
       }
       this.cancelPendingHeroFocus();
+      markHeroFocus(hero.id, { prefetched: Boolean(hero.heroMetaEnriched) });
+      this.cancelHeroNeighborPrefetch?.();
       const focusToken = Number(this.heroFocusToken || 0) + 1;
       this.heroFocusToken = focusToken;
       const scheduledHeroIdentity = nextHeroIdentity;
@@ -113,6 +116,7 @@ export function createHomeScreenMethods10() {
             this.heroIndex = matchedIndex;
           }
           this.applyHeroToDom();
+          this.scheduleHeroNeighborPrefetch?.(node);
 
           if (shouldEnrichHero && enrichDwellMs) {
             void preloadHeroAssets(focusedHero, "modern");

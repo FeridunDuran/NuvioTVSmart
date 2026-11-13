@@ -1,4 +1,5 @@
 import { ensureHeroMdbListRatings } from "./homeHeroMdbListLoad.js";
+import { markHeroPaint } from "../../../core/diagnostics/lagMonitor.js";
 import { registerHomeDomNodes } from "./homeDomUpdate.js";
 import { createHeroDescriptionAutoScroller } from "./heroDescriptionAutoScroll.js";
 import * as internals from "./homeScreenContext.js";
@@ -168,6 +169,10 @@ export function createHomeScreenMethods05() {
       );
       void ensureHeroMdbListRatings.call(this);
       this.applyHeroDescriptionAutoScroll();
+      markHeroPaint(hero?.id, {
+        hasLogo: Boolean(display.logo),
+        hasRating: Boolean(display.showImdbPrimary || display.showImdbSecondary || display.imdbText)
+      });
     },
     applyHeroDescriptionAutoScroll() {
       const node = this.container?.querySelector(".home-hero-card .home-hero-description");

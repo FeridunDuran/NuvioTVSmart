@@ -4,6 +4,7 @@ import { installCustomPosterFallback } from "./core/poster/customPoster.js";
 import { installWebOsImgurImageFallback } from "./core/media/imageProxy.js";
 import { startTvArtworkLazyLoader } from "./ui/images/tvArtworkLazyLoader.js";
 import { installFrameBudgetSampler } from "./core/diagnostics/frameBudget.js";
+import { installLagMonitor } from "./core/diagnostics/lagMonitor.js";
 import { AmbientMode } from "./ui/ambient/ambientMode.js";
 /* global __NUVIO_APP_VERSION__, __NUVIO_Q70T_BUILD__ */
 
@@ -776,6 +777,7 @@ async function bootstrapApp() {
   watchTvFramePace();
   startTvArtworkLazyLoader();
   installFrameBudgetSampler();
+  installLagMonitor();
   // Start the IndexedDB open early; the profile-scoped cache read stays in Home.
   void HomeCatalogSnapshotStore.warmup();
   markBootStage("Loading language resources");

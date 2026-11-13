@@ -25,6 +25,7 @@ test("constrained Home does not preload or publish hero textures while D-pad foc
     getTvRuntimePerformanceProfile: () => ({ isPerformanceConstrained: true }),
     isModernTvProfile: () => false,
     getHeroEnrichDwellMs: () => 500,
+    markHeroFocus: () => {},
     Date: { now: () => now },
     setTimeout: (fn, delay) => {
       timers.set(++id, { fn, at: now + delay });
