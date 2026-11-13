@@ -63,7 +63,8 @@ export const HOME_BACKGROUND_RENDER_DELAY_LEGACY_MS = 180;
 //
 export const HOME_LEGACY_LAZY_HYDRATION_DEBOUNCE_MS = 180;
 export const HOME_LEGACY_LAZY_HYDRATION_MAX_PER_FRAME = 2;
-export const HOME_LEGACY_HERO_BACKDROP_CROSSFADE_MS = 300;
-export const HOME_MODERN_HERO_BACKDROP_CROSSFADE_MS = 400;
+// Personal build: shorter backdrop crossfade so the new hero appears sooner (was 300/400 ms).
+export const HOME_LEGACY_HERO_BACKDROP_CROSSFADE_MS = 120;
+export const HOME_MODERN_HERO_BACKDROP_CROSSFADE_MS = 150;
 export const HOME_RETURN_FOCUS_STATE_KEY = "homeReturnFocusState";
 export const HOME_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_HOME_PERF__);

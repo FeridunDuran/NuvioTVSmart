@@ -113,7 +113,10 @@ export function createHomeScreenMethods04() {
   return {
     getHeroFocusDelay({ rapid = false } = {}) {
       if (this.isLegacyTvRuntime()) {
-        return rapid ? 260 : 150;
+        // Personal build: a single move updates the hero at once (was 150 ms). Rapid
+        // moves (key repeat / fast scrolling) still settle first so the hero is not
+        // rebuilt for every card passed.
+        return rapid ? 260 : 0;
       }
       return rapid ? MODERN_HOME_CONSTANTS.heroRapidSettleMs : MODERN_HOME_CONSTANTS.heroFocusDelayMs;
     },
