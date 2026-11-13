@@ -4,13 +4,14 @@ import { streamRepository } from "../../../data/repository/streamRepository.js";
 
 // Personal build: source prewarm, adapted from the idea in Litefin's PrewarmManager
 // (https://github.com/MoazSalem/litefin, MPL-2.0; idea only, no code copied).
-// When a movie detail page stays open for a moment, the full source search starts in the
+// When a movie or series detail page stays open for a moment, the full source search starts in the
 // background. The stream screen builds the same request key, so it joins the in-flight
 // search (or the 15 min completed cache) instead of starting from zero.
 const STREAM_PREWARM_DELAY_MS = 1500;
 
 export function createMetaDetailsScreenMethods27() {
-  const { ScreenUtils, buildYoutubeEmbedUrl, Router, resolvePlayableDetailType, resolveMovieStreamIdentity } = internals;
+  const { ScreenUtils, buildYoutubeEmbedUrl, Router, resolvePlayableDetailType, resolveMovieStreamIdentity, isSeriesDetailMeta } =
+    internals;
 
   return {
     scheduleStreamPrewarm() {
@@ -24,26 +25,36 @@ export function createMetaDetailsScreenMethods27() {
           return;
         }
         const itemType = resolvePlayableDetailType(this.params?.itemType || this.meta?.type, this.meta);
-        if (itemType !== "movie") {
+        let request = null;
+        if (isSeriesDetailMeta(this.meta, this.episodes)) {
+          // The episode the primary Play button opens: resume target, next up, or the first.
+          const episode = this.findContinueWatchingEpisodeTarget?.();
+          if (episode?.id) {
+            request = {
+              videoId: String(episode.id),
+              options: {
+                itemId: String(this.params?.itemId || ""),
+                season: episode.season,
+                episode: episode.episode
+              }
+            };
+          }
+        } else if (itemType === "movie") {
+          const { itemId, videoId } = resolveMovieStreamIdentity(this.meta, this.params);
+          if (videoId) {
+            request = { videoId, options: { itemId: String(itemId || ""), season: null, episode: null } };
+          }
+        }
+        if (!request) {
           return;
         }
-        const { itemId, videoId } = resolveMovieStreamIdentity(this.meta, this.params);
-        if (!videoId) {
-          return;
-        }
-        const key = `${itemType}:${videoId}`;
+        const key = `${itemType}:${request.videoId}`;
         if (this.streamPrewarmKey === key) {
           return;
         }
         this.streamPrewarmKey = key;
-        // Same options shape as the stream screen's request (itemId, season, episode).
-        void streamRepository
-          .getStreamsFromAllAddons(itemType, videoId, {
-            itemId: String(itemId || ""),
-            season: null,
-            episode: null
-          })
-          .catch(() => {});
+        // Same request key as the stream screen (type, videoId, season, episode).
+        void streamRepository.getStreamsFromAllAddons(itemType, request.videoId, request.options).catch(() => {});
       }, STREAM_PREWARM_DELAY_MS);
     },
     onPointerMove() {
