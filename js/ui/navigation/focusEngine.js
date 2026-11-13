@@ -4,9 +4,27 @@ import { Platform } from "../../platform/index.js";
 
 // Hold detection must use when the key was pressed/released, not when a busy main thread got to the
 // event: a late keyup would otherwise turn a short OK press into a long press (Android uses key events too).
-function keyEventTime(event) {
-  const timeStamp = Number(event?.timeStamp);
-  return Number.isFinite(timeStamp) && timeStamp > 0 ? timeStamp : 0;
+// Personal build: press duration for hold menus (title options, episode menus).
+// Samsung Tizen 5.5 stamps key events at ~1 s resolution (every keydown/keyup on a Q70T
+// ended in ...523 ms), so a short OK press crossing that boundary measured 1000 ms and
+// opened the hold menu. Plain wall-clock time is inflated when the UI thread stalls and the
+// keyup is handled late. Duration is therefore measured on a monotonic clock and only up to
+// the last heartbeat the UI thread managed to run while the key was down: time spent stalled
+// right before the keyup was handled is not counted as holding.
+const HOLD_HEARTBEAT_MS = 50;
+const HOLD_STALL_GAP_MS = 150;
+
+function monotonicNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function measuredHoldDuration(started) {
+  const now = monotonicNow();
+  const lastBeatAt = Number(started.lastBeatAt || started.at);
+  const releasedAt = now - lastBeatAt > HOLD_STALL_GAP_MS ? lastBeatAt : now;
+  return Math.max(0, releasedAt - Number(started.at || releasedAt));
 }
 
 function buildNormalizedEvent(event) {
@@ -58,6 +76,36 @@ export const FocusEngine = {
   pointerMoveFrame: null,
   pendingPointerMoveEvent: null,
   activeKeyDownStartedAt: new Map(),
+  keyHoldHeartbeat: null,
+
+  startKeyHoldHeartbeat() {
+    if (this.keyHoldHeartbeat) {
+      return;
+    }
+    this.keyHoldHeartbeat = setInterval(() => {
+      if (!this.activeKeyDownStartedAt.size) {
+        this.stopKeyHoldHeartbeat();
+        return;
+      }
+      const now = monotonicNow();
+      this.activeKeyDownStartedAt.forEach((entry) => {
+        // A beat after a long gap means the thread was stalled; keep the gap uncounted.
+        if (now - Number(entry.lastBeatAt || entry.at) <= HOLD_STALL_GAP_MS) {
+          entry.lastBeatAt = now;
+        } else {
+          entry.at += now - Number(entry.lastBeatAt || entry.at) - HOLD_HEARTBEAT_MS;
+          entry.lastBeatAt = now;
+        }
+      });
+    }, HOLD_HEARTBEAT_MS);
+  },
+
+  stopKeyHoldHeartbeat() {
+    if (this.keyHoldHeartbeat) {
+      clearInterval(this.keyHoldHeartbeat);
+      this.keyHoldHeartbeat = null;
+    }
+  },
   activeBackKeyIdentities: new Set(),
 
   init() {
@@ -126,10 +174,9 @@ export const FocusEngine = {
     const normalizedEvent = buildNormalizedEvent(event);
     const keyIdentity = this.getKeyIdentity(normalizedEvent);
     if (keyIdentity && (!normalizedEvent.repeat || !this.activeKeyDownStartedAt.has(keyIdentity))) {
-      this.activeKeyDownStartedAt.set(keyIdentity, {
-        at: Date.now(),
-        timeStamp: keyEventTime(event)
-      });
+      const at = monotonicNow();
+      this.activeKeyDownStartedAt.set(keyIdentity, { at, lastBeatAt: at });
+      this.startKeyHoldHeartbeat();
     }
 
     if (
@@ -198,16 +245,11 @@ export const FocusEngine = {
 
     if (keyIdentity) {
       const started = this.activeKeyDownStartedAt.get(keyIdentity);
-      const releasedAt = keyEventTime(event);
-      normalizedEvent.keyDownDurationMs = started
-        ? Math.max(
-            0,
-            started.timeStamp && releasedAt
-              ? releasedAt - started.timeStamp
-              : Date.now() - started.at
-          )
-        : 0;
+      normalizedEvent.keyDownDurationMs = started ? measuredHoldDuration(started) : 0;
       this.activeKeyDownStartedAt.delete(keyIdentity);
+      if (!this.activeKeyDownStartedAt.size) {
+        this.stopKeyHoldHeartbeat();
+      }
     }
 
     const currentScreen = Router.getCurrentScreen();

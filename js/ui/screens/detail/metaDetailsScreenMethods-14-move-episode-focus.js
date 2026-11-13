@@ -69,19 +69,8 @@ export function createMetaDetailsScreenMethods14() {
         videoId,
         holdTriggered: false
       };
-      this.pendingEpisodeHoldTimer = setTimeout(() => {
-        this.pendingEpisodeHoldTimer = null;
-        const pending = this.pendingEpisodeHoldTarget;
-        if (!pending || Router.getCurrent() !== "detail") {
-          return;
-        }
-        const current = this.container?.querySelector(".series-episode-card.focusable.focused") || null;
-        if (!this.hasPendingEpisodeHold(current)) {
-          return;
-        }
-        pending.holdTriggered = true;
-        this.openEpisodeHoldMenu(current);
-      }, EPISODE_HOLD_DELAY_MS);
+      // Personal build: decided on key release (completePendingEpisodeHold) from the measured
+      // press duration. A timer here opened the menu when a stalled short press ran late.
       return true;
     },
     startPendingSeasonHold(node) {
@@ -94,19 +83,8 @@ export function createMetaDetailsScreenMethods14() {
         season,
         holdTriggered: false
       };
-      this.pendingSeasonHoldTimer = setTimeout(() => {
-        this.pendingSeasonHoldTimer = null;
-        const pending = this.pendingSeasonHoldTarget;
-        if (!pending || Router.getCurrent() !== "detail") {
-          return;
-        }
-        const current = this.container?.querySelector(".series-season-btn.focusable.focused") || null;
-        if (!this.hasPendingSeasonHold(current)) {
-          return;
-        }
-        pending.holdTriggered = true;
-        this.openSeasonHoldMenu(current);
-      }, EPISODE_HOLD_DELAY_MS);
+      // Personal build: decided on key release (completePendingSeasonHold) from the measured
+      // press duration. A timer here opened the menu when a stalled short press ran late.
       return true;
     },
     async completePendingEpisodeHold(node, event = null) {
