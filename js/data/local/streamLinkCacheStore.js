@@ -3,7 +3,9 @@ import { ProfileManager } from "../../core/profile/profileManager.js";
 import { isExpiredStreamUrl } from "../../core/player/hlsNetworkErrorPolicy.js";
 
 const KEY = "streamLinkCache";
-const MAX_ENTRIES = 500;
+// Personal build: 120 instead of 500; the whole store is parsed on every lookup and
+// serialized on every save, which is costly on a Tizen 5.5 TV.
+const MAX_ENTRIES = 120;
 export const activeStreamLinkProfile = () => String(ProfileManager.getActiveProfileId() || "1");
 const text = (value) => (typeof value === "string" ? value.trim() : "");
 function contentKey(params) {
@@ -44,9 +46,18 @@ export function isReusableHttpUrl(value) {
     return false;
   }
 }
+let readAllMemo = null;
 function readAll() {
+  // Memoized on the LocalStore revision; callers mutate and then LocalStore.set(), which
+  // bumps the revision and invalidates this memo.
+  const revision = LocalStore.revision(KEY);
+  if (readAllMemo && readAllMemo.revision === revision) {
+    return readAllMemo.value;
+  }
   const all = LocalStore.get(KEY, {});
-  return all && typeof all === "object" && !Array.isArray(all) ? all : {};
+  const value = all && typeof all === "object" && !Array.isArray(all) ? all : {};
+  readAllMemo = { revision, value };
+  return value;
 }
 function validPayload(value, maxAgeMs) {
   const age = Date.now() - Number(value?.cachedAtMs);

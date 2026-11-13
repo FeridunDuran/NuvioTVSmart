@@ -180,6 +180,56 @@ function combineAbortSignals(...signals) {
   };
 }
 
+// Personal build: cap JSON response size (idea from StremioK's XHR progress check and
+// AIOStreams' safe-fetch). A misbehaving add-on returning tens of MB would otherwise be
+// buffered, decoded and parsed in full on a 1.5 GB TV. Callers can pass maxResponseBytes.
+const DEFAULT_MAX_JSON_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+function responseTooLargeError(limit) {
+  const error = new Error(`Response exceeds ${Math.round(limit / 1024 / 1024)} MB limit`);
+  error.code = "response_too_large";
+  return error;
+}
+
+async function readTextWithLimit(response, maxBytes) {
+  const limit = Number(maxBytes) > 0 ? Number(maxBytes) : DEFAULT_MAX_JSON_RESPONSE_BYTES;
+  const declared = Number(response.headers?.get?.("content-length") || 0);
+  if (declared > limit) {
+    try {
+      response.body?.cancel?.();
+    } catch (_) {
+      // ignore
+    }
+    throw responseTooLargeError(limit);
+  }
+  const reader = response.body?.getReader?.();
+  if (!reader || typeof TextDecoder !== "function") {
+    const text = await response.text();
+    if (typeof text === "string" && text.length > limit) {
+      throw responseTooLargeError(limit);
+    }
+    return text;
+  }
+  const decoder = new TextDecoder("utf-8");
+  let received = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value ? value.byteLength : 0;
+    if (received > limit) {
+      try {
+        reader.cancel();
+      } catch (_) {
+        // ignore
+      }
+      throw responseTooLargeError(limit);
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 export async function httpRequest(url, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   const includeSessionAuth = options.includeSessionAuth !== false;
@@ -210,6 +260,7 @@ export async function httpRequest(url, options = {}) {
     responseType: requestedResponseType,
     timeoutMs: requestedTimeoutMs,
     signal: callerSignal,
+    maxResponseBytes: _ignoredMaxResponseBytes,
     ...fetchOptions
   } = options;
 
@@ -303,7 +354,7 @@ export async function httpRequest(url, options = {}) {
         if (responseType === "text") {
           return response.text();
         }
-        const text = await response.text();
+        const text = await readTextWithLimit(response, options.maxResponseBytes);
         const normalized = typeof text === "string" ? text.trim() : "";
         if (!normalized) {
           return null;

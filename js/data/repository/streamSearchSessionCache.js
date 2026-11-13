@@ -70,6 +70,23 @@ function safeNotify(callback, value, message) {
  * StreamSearchSessionCache: profile/source configuration are part of the key,
  * failed-only sessions are not retained, and completed entries expire quickly.
  */
+function latestAddonNotifications(addons = []) {
+  const byKey = new Map();
+  addons.forEach((addon, index) => {
+    const key = String(
+      addon?.addonBaseUrl ||
+        addon?.baseUrl ||
+        addon?.addonId ||
+        addon?.addonName ||
+        addon?.name ||
+        index
+    );
+    byKey.delete(key);
+    byKey.set(key, addon);
+  });
+  return Array.from(byKey.values());
+}
+
 export class StreamSearchSessionCache {
   constructor({
     now = () => Date.now(),
@@ -250,6 +267,11 @@ export class StreamSearchSessionCache {
     session.resolve(completedResult);
     if (hasSuccessfulData(completedResult)) {
       session.completedAt = this.now();
+      // Personal build: a completed session replays only its final result (replayCompleted),
+      // so the progressive chunk copies are not needed for the remaining 15 min TTL. The
+      // add-on notifications are reduced to the latest one per add-on.
+      session.chunks = [];
+      session.addons = latestAddonNotifications(session.addons);
       return;
     }
     const id = keyString(session.key);
