@@ -255,27 +255,44 @@ export function createHomeScreenMethods11() {
         }
       }, 400);
     },
+    // Personal build: copy-on-write. Only rows that contain the item get new row/item
+    // arrays; untouched rows keep their references. Before, every hero update (and every
+    // neighbour prefetch) rebuilt all ~65 rows and their item arrays.
     mergeHeroIntoCatalogState(itemId, mergedHero) {
-      this.heroCandidates = (this.heroCandidates || []).map((item) => {
-        return String(item?.id || "") === itemId ? { ...item, ...mergedHero } : item;
-      });
-      this.rows = (this.rows || []).map((row) => {
+      const id = String(itemId || "");
+      const candidates = this.heroCandidates || [];
+      const candidateIndex = candidates.findIndex((item) => String(item?.id || "") === id);
+      if (candidateIndex >= 0) {
+        const nextCandidates = candidates.slice();
+        nextCandidates[candidateIndex] = { ...candidates[candidateIndex], ...mergedHero };
+        this.heroCandidates = nextCandidates;
+      }
+      const rows = this.rows || [];
+      let nextRows = null;
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex];
         const items = row?.result?.data?.items;
         if (!Array.isArray(items)) {
-          return row;
+          continue;
         }
-        const nextItems = items.map((item) => (String(item?.id || "") === itemId ? { ...item, ...mergedHero } : item));
-        return {
-          ...row,
-          result: {
-            ...row.result,
-            data: {
-              ...(row.result?.data || {}),
-              items: nextItems
-            }
+        let nextItems = null;
+        for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+          if (String(items[itemIndex]?.id || "") === id) {
+            nextItems = nextItems || items.slice();
+            nextItems[itemIndex] = { ...items[itemIndex], ...mergedHero };
           }
-        };
-      });
+        }
+        if (nextItems) {
+          nextRows = nextRows || rows.slice();
+          nextRows[rowIndex] = {
+            ...row,
+            result: { ...row.result, data: { ...(row.result?.data || {}), items: nextItems } }
+          };
+        }
+      }
+      if (nextRows) {
+        this.rows = nextRows;
+      }
     },
     isModernPosterNode(node) {
       return this.layoutMode === "modern" && Boolean(node?.classList?.contains("home-poster-card"));

@@ -1,6 +1,22 @@
 import { ensureHeroMdbListRatings } from "./homeHeroMdbListLoad.js";
 import { markHeroPaint } from "../../../core/diagnostics/lagMonitor.js";
 import { registerHomeDomNodes } from "./homeDomUpdate.js";
+
+// Personal build: skip hero DOM writes whose content did not change (same title, meta,
+// chips, ratings or indicators). Each innerHTML write re-parses and re-lays out the hero.
+function setHtmlIfChanged(node, html) {
+  const next = String(html == null ? "" : html);
+  // Compare with the live markup: other code (ratings loader, truncation) also writes here.
+  if (node.innerHTML === next) return false;
+  node.innerHTML = next;
+  return true;
+}
+function setTextIfChanged(node, text) {
+  const next = String(text == null ? "" : text);
+  if (node.textContent === next) return false;
+  node.textContent = next;
+  return true;
+}
 import { createHeroDescriptionAutoScroller } from "./heroDescriptionAutoScroll.js";
 import * as internals from "./homeScreenContext.js";
 
@@ -98,20 +114,20 @@ export function createHomeScreenMethods05() {
 
       const titleNode = heroNode.querySelector(".home-hero-title-text");
       if (titleNode) {
-        titleNode.textContent = display.title || "Untitled";
+        setTextIfChanged(titleNode, display.title || "Untitled");
         titleNode.classList.toggle("is-hidden", Boolean(display.logo));
       }
 
       if (this.layoutMode === "modern") {
         const primaryNode = heroNode.querySelector(".home-modern-hero-meta-line");
         if (primaryNode) {
-          primaryNode.innerHTML = renderModernHeroPrimary(display);
+          setHtmlIfChanged(primaryNode, renderModernHeroPrimary(display));
           primaryNode.classList.toggle("is-empty", !display.leadingMeta.length && !display.trailingMeta.length && !display.showImdbPrimary);
         }
 
         const secondaryNode = heroNode.querySelector(".home-modern-hero-secondary");
         if (secondaryNode) {
-          secondaryNode.innerHTML = renderModernHeroSecondary(display);
+          setHtmlIfChanged(secondaryNode, renderModernHeroSecondary(display));
           secondaryNode.classList.toggle(
             "is-empty",
             !display.secondaryHighlightText &&
@@ -124,31 +140,31 @@ export function createHomeScreenMethods05() {
       } else {
         const primaryNode = heroNode.querySelector(".home-hero-meta-primary");
         if (primaryNode) {
-          primaryNode.innerHTML = renderMetaTokens(display.metaPrimary);
+          setHtmlIfChanged(primaryNode, renderMetaTokens(display.metaPrimary));
           primaryNode.classList.toggle("is-empty", !display.metaPrimary.length);
         }
 
         const secondaryNode = heroNode.querySelector(".home-hero-meta-secondary");
         if (secondaryNode) {
-          secondaryNode.innerHTML = renderMetaTokens(display.metaSecondary);
+          setHtmlIfChanged(secondaryNode, renderMetaTokens(display.metaSecondary));
           secondaryNode.classList.toggle("is-empty", !display.metaSecondary.length);
         }
 
         const chipNode = heroNode.querySelector(".home-hero-chip-row");
         if (chipNode) {
-          chipNode.innerHTML = display.chips.map((chip) => `<span class="home-hero-chip">${escapeHtml(chip)}</span>`).join("");
+          setHtmlIfChanged(chipNode, display.chips.map((chip) => `<span class="home-hero-chip">${escapeHtml(chip)}</span>`).join(""));
           chipNode.classList.toggle("is-empty", !display.chips.length);
         }
       }
 
       const descriptionNode = heroNode.querySelector(".home-hero-description");
       if (descriptionNode) {
-        descriptionNode.textContent = display.description || " ";
+        setTextIfChanged(descriptionNode, display.description || " ");
         descriptionNode.classList.toggle("is-empty", !display.description);
       }
       const mdbRow = heroNode.querySelector(".home-hero-mdb-ratings");
       if (mdbRow) {
-        mdbRow.innerHTML = display.mdbListMarkup || "";
+        setHtmlIfChanged(mdbRow, display.mdbListMarkup || "");
         mdbRow.classList.toggle("is-empty", !display.mdbListMarkup);
       }
       this.scheduleHomeTruncationUpdate({ scope: heroNode });
@@ -156,7 +172,7 @@ export function createHomeScreenMethods05() {
 
       const indicators = heroNode.querySelector(".home-hero-indicators");
       if (indicators) {
-        indicators.innerHTML = buildHeroIndicators(this.heroCandidates, hero);
+        setHtmlIfChanged(indicators, buildHeroIndicators(this.heroCandidates, hero));
       }
       // These nodes were replaced outside the incremental renderer. Register
       // their new children so the next refresh replaces them instead of appending.
