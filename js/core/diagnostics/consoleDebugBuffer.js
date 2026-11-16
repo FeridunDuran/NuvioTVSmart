@@ -213,6 +213,11 @@ export function getConsoleDebugEvents() {
   }));
 }
 
+// Personal build: cheap access to the newest event for the crash black box.
+export function getLastConsoleDebugEvent() {
+  return events.length ? events[events.length - 1] : null;
+}
+
 export function subscribeToConsoleDebugEvents(listener) {
   if (typeof listener !== "function") {
     return () => {};

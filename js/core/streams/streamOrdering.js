@@ -217,10 +217,17 @@ function seedCount(text) {
   return -1;
 }
 
+const LOW_SEED_THRESHOLD = 5;
+
 function orderKey(stream) {
   if (orderKeyCache && orderKeyCache.has(stream)) return orderKeyCache.get(stream);
   const text = streamSearchText(stream);
-  const key = resolutionTier(text) * 1e10 - seedCount(text);
+  const seeds = seedCount(text);
+  // Personal build: a torrent with a known but tiny seeder count cannot stream 1080p on this
+  // TV (seen: 4 peers, 36 kB/s, player CONNECTION_FAILED). Such torrents go after every
+  // resolution tier instead of leading the 1080p group. Unknown counts (-1) are untouched.
+  const starving = seeds >= 0 && seeds < LOW_SEED_THRESHOLD;
+  const key = (resolutionTier(text) + (starving ? 4 : 0)) * 1e10 - seeds;
   if (orderKeyCache && stream && typeof stream === "object") orderKeyCache.set(stream, key);
   return key;
 }
