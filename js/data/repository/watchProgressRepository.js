@@ -326,15 +326,57 @@ function filterForSelectedContinueWatchingSource(items = []) {
   );
 }
 
+const LOCAL_PROGRESS_PREFERENCE_WINDOW_MS = 2 * 60 * 1000;
+
+function isLocalProgressSource(item) {
+  const source = String(item?.source || "");
+  return (
+    source.endsWith("_local") || source === WatchProgressSource.NUVIO_SYNC || source === "local"
+  );
+}
+
+// Newest first; when a local record and a remote one are within two minutes of each other
+// (Trakt rounds to seconds and lags the local write), the local record wins because it holds
+// the exact position.
+function compareForInProgressDedupe(left, right) {
+  const delta = Number(right.updatedAt || 0) - Number(left.updatedAt || 0);
+  if (Math.abs(delta) <= LOCAL_PROGRESS_PREFERENCE_WINDOW_MS) {
+    const leftLocal = isLocalProgressSource(left);
+    const rightLocal = isLocalProgressSource(right);
+    if (leftLocal !== rightLocal) {
+      return leftLocal ? -1 : 1;
+    }
+  }
+  return delta;
+}
+
 function deduplicateInProgress(items = [], recentLimit = 300) {
   const seenContentIds = new Set();
+  const seenMovieIds = new Set();
 
   return (
     (Array.isArray(items) ? items : [])
       .slice()
-      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
+      .sort(compareForInProgressDedupe)
       .filter((item) => {
+        // Personal build: movies are deduplicated too. A movie watched on this TV has a
+        // local progress record and, after scrobbling, a Trakt playback record for the
+        // same title; both were shown (e.g. "Cooked" twice). Episodes keep their own
+        // per-series rule below.
         if (!isSeriesType(item?.contentType)) {
+          if (isCloudProgressItem(item)) {
+            return true;
+          }
+          const movieIdentities = Array.from(watchedItemIdentityValues(item))
+            .map((value) => value.toLowerCase())
+            .filter(Boolean);
+          if (!movieIdentities.length) {
+            return true;
+          }
+          if (movieIdentities.some((identity) => seenMovieIds.has(identity))) {
+            return false;
+          }
+          movieIdentities.forEach((identity) => seenMovieIds.add(identity));
           return true;
         }
 
